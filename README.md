@@ -2,6 +2,10 @@
 
 Hammerspoon Spoon for viewing Claude Code tasks in a floating window.
 
+## Demo
+
+![ClaudeTasks spoon](https://github.com/user-attachments/assets/71068e53-ae80-433e-86de-3f158b534c20)
+
 ## Features
 
 - Floating task viewer with WebView UI
