@@ -646,7 +646,7 @@ local function generateHTML(tasks)
         <div class="header-row">
             <span class="title">Claude Tasks</span>
             <div class="header-actions">
-                <button id="quickUpdateBtn" class="launch-btn quick-update-btn" onclick="showQuickUpdateDialog()" title="Quick TaskUpdate ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
+                <button id="quickUpdateBtn" class="launch-btn quick-update-btn" onclick="showQuickUpdateDialog()" title="Quick Task ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
                 <button id="launchBtn" class="launch-btn" onclick="launchClaude()" title="Launch Claude session"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>▶</button>
                 <span class="count">]] .. #tasks .. [[ tasks</span>
             </div>
@@ -787,7 +787,7 @@ local function createUserContent()
         elseif msg.body.action == "launchClaude" then
             obj:launchClaudeWithTaskList()
         elseif msg.body.action == "showQuickUpdateDialog" then
-            local button, text = hs.dialog.textPrompt("Quick TaskUpdate", "Enter prompt (e.g., 'TaskUpdate: #3 완료'):", "", "OK", "Cancel")
+            local button, text = hs.dialog.textPrompt("Quick Task", "Enter prompt (e.g., 'TaskCreate: Fix bug' or 'TaskUpdate: #3 done'):", "", "OK", "Cancel")
             if button == "OK" and text and text ~= "" then
                 obj:quickTaskUpdate(text)
             end
