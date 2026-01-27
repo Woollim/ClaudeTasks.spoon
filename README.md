@@ -16,8 +16,8 @@ Hammerspoon Spoon for viewing Claude Code tasks in a floating window.
 ### Option 1: Clone and Symlink (Recommended for development)
 
 ```bash
-git clone https://github.com/jongwony/ClaudeTasks.spoon.git ~/Downloads/github/private/ClaudeTasks.spoon
-ln -sf ~/Downloads/github/private/ClaudeTasks.spoon ~/.hammerspoon/Spoons/ClaudeTasks.spoon
+git clone https://github.com/jongwony/ClaudeTasks.spoon.git
+ln -sf $(pwd)/ClaudeTasks.spoon ~/.hammerspoon/Spoons/ClaudeTasks.spoon
 ```
 
 ### Option 2: Direct Download
