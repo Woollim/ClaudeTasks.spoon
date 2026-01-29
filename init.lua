@@ -6,7 +6,7 @@ local obj = {}
 
 -- Spoon Metadata
 obj.name = "ClaudeTasks"
-obj.version = "1.0"
+obj.version = "1.1.0"
 obj.author = "jongwony <lastone9182@gmail.com>"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 obj.homepage = "https://github.com/jongwony/ClaudeTasks.spoon"
@@ -300,6 +300,16 @@ local function escapeHtml(str)
               :gsub("'", "&#39;")
 end
 
+-- 문자열을 JSON으로 인코딩 (hs.json.encode는 테이블만 받음)
+local function jsonEncodeString(str)
+    if not str then return '""' end
+    local encoded = hs.json.encode({v = str})
+    -- {"v":"..."} 에서 값 부분만 추출
+    local jsonStr = encoded:match('"v":(.+)}$')
+    -- HTML 속성(작은따옴표)에서 사용할 때 작은따옴표를 JS hex escape로 변환
+    return jsonStr:gsub("'", "\\x27")
+end
+
 local function getStatusColor(status)
     if status == "completed" then
         return "#22c55e"  -- green
@@ -318,6 +328,32 @@ local function getStatusIcon(status)
     else
         return "○"
     end
+end
+
+-- metadata를 뱃지 HTML로 변환
+local function generateMetadataBadges(metadata)
+    if not metadata or type(metadata) ~= "table" then
+        return ""
+    end
+    local badges = ""
+    for key, value in pairs(metadata) do
+        local displayValue = tostring(value)
+        if type(value) == "table" then
+            displayValue = hs.json.encode(value)
+        end
+        -- 긴 값은 truncate
+        if #displayValue > 20 then
+            displayValue = displayValue:sub(1, 17) .. "..."
+        end
+        badges = badges .. string.format(
+            '<span class="metadata-badge" title="%s: %s"><span class="meta-key">%s:</span> %s</span>',
+            escapeHtml(key),
+            escapeHtml(tostring(value)),
+            escapeHtml(key),
+            escapeHtml(displayValue)
+        )
+    end
+    return badges
 end
 
 local function generateHTML(tasks)
@@ -562,6 +598,21 @@ local function generateHTML(tasks)
             color: #fff;
             word-wrap: break-word;
         }
+        .task-description {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        .task-description:hover {
+            color: #bbb;
+        }
         .task-meta {
             font-size: 11px;
             color: #666;
@@ -587,10 +638,24 @@ local function generateHTML(tasks)
             padding: 2px 6px;
             border-radius: 4px;
             color: #888;
-            cursor: pointer;
         }
-        .session-badge:hover {
-            background: rgba(255, 255, 255, 0.15);
+        .owner-badge {
+            font-size: 10px;
+            background: rgba(59, 130, 246, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #60a5fa;
+        }
+        .metadata-badge {
+            font-size: 10px;
+            background: rgba(168, 85, 247, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #c084fc;
+            margin-left: 4px;
+        }
+        .metadata-badge .meta-key {
+            opacity: 0.7;
         }
         .cwd-path {
             font-size: 10px;
@@ -687,21 +752,19 @@ local function generateHTML(tasks)
             });
         }
 
-        function copySessionId(e, fullId) {
-            e.stopPropagation();
-            navigator.clipboard.writeText(fullId).then(function() {
-                var badge = e.target;
-                var orig = badge.textContent;
-                badge.textContent = 'Copied!';
-                setTimeout(function() { badge.textContent = orig; }, 1000);
-            });
-        }
-
         function launchClaudeWithCwd(sessionId, cwd) {
             window.webkit.messageHandlers.taskBridge.postMessage({
                 action: 'launchClaudeWithCwd',
                 sessionId: sessionId,
                 cwd: cwd
+            });
+        }
+
+        function showTaskDetail(subject, description) {
+            window.webkit.messageHandlers.taskBridge.postMessage({
+                action: 'showTaskDetail',
+                subject: subject,
+                description: description
             });
         }
 
@@ -758,15 +821,24 @@ local function generateHTML(tasks)
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
             local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. escapeHtml(task._sessionId) .. '\', \'' .. escapeHtml(task._cwd) .. '\')" title="Launch in ' .. escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local descriptionHtml = ''
+            if task.description then
+                local jsonDesc = jsonEncodeString(task.description)
+                local jsonSubj = jsonEncodeString(task.subject)
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. escapeHtml(task.description) .. "</div>"
+            end
+            local ownerHtml = task.owner and ' <span class="owner-badge">' .. escapeHtml(task.owner) .. '</span>' or ''
+            local metadataHtml = generateMetadataBadges(task.metadata)
             html = html .. [[
         <div class="task">
             <span class="task-icon status-in_progress">]] .. getStatusIcon("in_progress") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. escapeHtml(task.subject) .. [[</div>
+                ]] .. descriptionHtml .. [[
                 <div class="task-meta">
-                    <span class="session-badge" onclick="copySessionId(event, ']] .. escapeHtml(task._sessionId) .. [[')" title="Click to copy: ]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId:sub(1, 8)) .. [[...</span>
-                    #]] .. escapeHtml(tostring(task.id)) .. [[
+                    #]] .. escapeHtml(tostring(task.id)) .. [[ <span class="session-badge" title="]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId) .. [[</span>]] .. ownerHtml .. [[
                 </div>
+                ]] .. (metadataHtml ~= '' and '<div class="task-meta">' .. metadataHtml .. '</div>' or '') .. [[
                 ]] .. (task._cwd and '<div class="cwd-path" title="' .. escapeHtml(task._cwd) .. '">' .. escapeHtml(task._cwd) .. '</div>' or '') .. [[
                 ]] .. blocked .. launchBtn .. [[
             </div>
@@ -788,15 +860,24 @@ local function generateHTML(tasks)
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
             local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. escapeHtml(task._sessionId) .. '\', \'' .. escapeHtml(task._cwd) .. '\')" title="Launch in ' .. escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local descriptionHtml = ''
+            if task.description then
+                local jsonDesc = jsonEncodeString(task.description)
+                local jsonSubj = jsonEncodeString(task.subject)
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. escapeHtml(task.description) .. "</div>"
+            end
+            local ownerHtml = task.owner and ' <span class="owner-badge">' .. escapeHtml(task.owner) .. '</span>' or ''
+            local metadataHtml = generateMetadataBadges(task.metadata)
             html = html .. [[
         <div class="task">
             <span class="task-icon status-pending">]] .. getStatusIcon("pending") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. escapeHtml(task.subject) .. [[</div>
+                ]] .. descriptionHtml .. [[
                 <div class="task-meta">
-                    <span class="session-badge" onclick="copySessionId(event, ']] .. escapeHtml(task._sessionId) .. [[')" title="Click to copy: ]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId:sub(1, 8)) .. [[...</span>
-                    #]] .. escapeHtml(tostring(task.id)) .. [[
+                    #]] .. escapeHtml(tostring(task.id)) .. [[ <span class="session-badge" title="]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId) .. [[</span>]] .. ownerHtml .. [[
                 </div>
+                ]] .. (metadataHtml ~= '' and '<div class="task-meta">' .. metadataHtml .. '</div>' or '') .. [[
                 ]] .. (task._cwd and '<div class="cwd-path" title="' .. escapeHtml(task._cwd) .. '">' .. escapeHtml(task._cwd) .. '</div>' or '') .. [[
                 ]] .. blocked .. launchBtn .. [[
             </div>
@@ -816,15 +897,24 @@ local function generateHTML(tasks)
         for i = 1, displayCount do
             local task = completedTasks[i]
             local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. escapeHtml(task._sessionId) .. '\', \'' .. escapeHtml(task._cwd) .. '\')" title="Launch in ' .. escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local descriptionHtml = ''
+            if task.description then
+                local jsonDesc = jsonEncodeString(task.description)
+                local jsonSubj = jsonEncodeString(task.subject)
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. escapeHtml(task.description) .. "</div>"
+            end
+            local ownerHtml = task.owner and ' <span class="owner-badge">' .. escapeHtml(task.owner) .. '</span>' or ''
+            local metadataHtml = generateMetadataBadges(task.metadata)
             html = html .. [[
         <div class="task" style="opacity: 0.6;">
             <span class="task-icon status-completed">]] .. getStatusIcon("completed") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. escapeHtml(task.subject) .. [[</div>
+                ]] .. descriptionHtml .. [[
                 <div class="task-meta">
-                    <span class="session-badge" onclick="copySessionId(event, ']] .. escapeHtml(task._sessionId) .. [[')" title="Click to copy: ]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId:sub(1, 8)) .. [[...</span>
-                    #]] .. escapeHtml(tostring(task.id)) .. [[
+                    #]] .. escapeHtml(tostring(task.id)) .. [[ <span class="session-badge" title="]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId) .. [[</span>]] .. ownerHtml .. [[
                 </div>
+                ]] .. (metadataHtml ~= '' and '<div class="task-meta">' .. metadataHtml .. '</div>' or '') .. [[
                 ]] .. (task._cwd and '<div class="cwd-path" title="' .. escapeHtml(task._cwd) .. '">' .. escapeHtml(task._cwd) .. '</div>' or '') .. launchBtn .. [[
             </div>
         </div>
@@ -879,10 +969,9 @@ local function createUserContent()
         elseif msg.body.action == "launchClaudeWithCwd" then
             obj:launchClaudeWithCwd(msg.body.sessionId, msg.body.cwd)
         elseif msg.body.action == "showQuickUpdateDialog" then
-            local button, text = hs.dialog.textPrompt("Quick Task", "Enter prompt (e.g., 'TaskCreate: Fix bug' or 'TaskUpdate: #3 done'):", "", "OK", "Cancel")
-            if button == "OK" and text and text ~= "" then
-                obj:quickTaskUpdate(text)
-            end
+            obj:showQuickTaskDialog()
+        elseif msg.body.action == "showTaskDetail" then
+            obj:showTaskDetailWindow(msg.body.subject, msg.body.description)
         end
     end)
 
@@ -1148,7 +1237,9 @@ function obj:quickTaskUpdate(prompt)
         CLAUDE_CODE_TASK_LIST_ID = taskListId
     }
 
-    local systemPrompt = "This is a lightweight Todo Task management command. Use TaskCreate or TaskUpdate tools immediately based on the user's input. Do not ask for clarification - execute the tool directly."
+    local systemPrompt = [[This is a lightweight Todo Task management command. Use TaskCreate or TaskUpdate tools immediately based on the user's input. Do not ask for clarification - execute the tool directly.
+
+For TaskCreate: If description is not explicitly provided, infer a meaningful description from the subject.]]
 
     log("QuickTaskUpdate: " .. prompt .. " (taskListId: " .. taskListId .. ")")
 
@@ -1187,6 +1278,492 @@ function obj:quickTaskUpdate(prompt)
     task:setWorkingDirectory(os.getenv("HOME") .. "/.claude")
     task:start()
     hs.alert.show("Running Quick Task...", 1)
+end
+
+--- 태스크 상세 창 표시
+local detailWebview = nil
+
+function obj:showTaskDetailWindow(subject, description)
+    -- 기존 상세 창이 있으면 닫기
+    if detailWebview then
+        detailWebview:delete()
+        detailWebview = nil
+    end
+
+    local screen = hs.screen.mainScreen()
+    local frame = screen:frame()
+
+    -- 화면 중앙에 더 큰 창
+    local width = 600
+    local height = 500
+    local rect = hs.geometry.rect(
+        frame.x + (frame.w - width) / 2,
+        frame.y + (frame.h - height) / 2,
+        width,
+        height
+    )
+
+    local html = [[
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            background: rgba(30, 30, 30, 0.98);
+            color: #e5e5e5;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .content {
+            overflow-y: auto;
+            max-height: calc(100vh - 80px);
+        }
+        .content h1, .content h2, .content h3 { color: #fff; margin: 16px 0 8px 0; }
+        .content h1 { font-size: 1.5em; }
+        .content h2 { font-size: 1.3em; }
+        .content h3 { font-size: 1.1em; }
+        .content p { margin: 8px 0; }
+        .content ul, .content ol { margin: 8px 0; padding-left: 24px; }
+        .content li { margin: 4px 0; }
+        .content code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: "SF Mono", Menlo, monospace;
+            font-size: 13px;
+        }
+        .content pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        .content pre code {
+            background: none;
+            padding: 0;
+        }
+        .content blockquote {
+            border-left: 3px solid #3b82f6;
+            padding-left: 12px;
+            margin: 12px 0;
+            color: #aaa;
+        }
+        .content a { color: #60a5fa; }
+        .content table { border-collapse: collapse; margin: 12px 0; }
+        .content th, .content td {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .content th { background: rgba(255, 255, 255, 0.05); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">]] .. escapeHtml(subject or "Task Detail") .. [[</div>
+    </div>
+    <div class="content" id="content"></div>
+    <script>
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') window.close();
+        });
+        var description = ]] .. jsonEncodeString(description or "") .. [[;
+        document.getElementById('content').innerHTML = marked.parse(description);
+    </script>
+</body>
+</html>
+]]
+
+    detailWebview = hs.webview.new(rect)
+    detailWebview:windowStyle({"titled", "closable", "resizable"})
+    detailWebview:level(hs.drawing.windowLevels.floating)
+    detailWebview:allowTextEntry(true)
+    detailWebview:shadow(true)
+    detailWebview:alpha(0.98)
+    detailWebview:windowTitle(subject or "Task Detail")
+    detailWebview:html(html)
+    detailWebview:show()
+    detailWebview:bringToFront()
+
+    log("Task detail window opened: " .. (subject or ""))
+    return self
+end
+
+--- QuickTask 다이얼로그 표시
+local quickTaskWebview = nil
+local quickTaskUserContent = nil
+
+function obj:showQuickTaskDialog()
+    -- 기존 창이 있으면 닫기
+    if quickTaskWebview then
+        quickTaskWebview:delete()
+        quickTaskWebview = nil
+    end
+
+    local screen = hs.screen.mainScreen()
+    local frame = screen:frame()
+
+    local width = 500
+    local height = 420
+    local rect = hs.geometry.rect(
+        frame.x + (frame.w - width) / 2,
+        frame.y + (frame.h - height) / 2,
+        width,
+        height
+    )
+
+    local html = [[
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            background: rgba(30, 30, 30, 0.98);
+            color: #e5e5e5;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .help-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #888;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .help-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+        .help-btn.active {
+            background: rgba(59, 130, 246, 0.3);
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+        .input-group {
+            margin-bottom: 16px;
+        }
+        .input-label {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 6px;
+        }
+        .input-field {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e5e5e5;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        .input-field::placeholder {
+            color: #555;
+        }
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.1);
+            color: #aaa;
+        }
+        .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .btn-primary {
+            background: #3b82f6;
+            color: #fff;
+        }
+        .btn-primary:hover {
+            background: #2563eb;
+        }
+        .btn-primary:disabled {
+            background: #4b5563;
+            cursor: not-allowed;
+        }
+        .schema-help {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .schema-help.visible {
+            display: block;
+        }
+        .schema-section {
+            margin-bottom: 16px;
+        }
+        .schema-section:last-child {
+            margin-bottom: 0;
+        }
+        .schema-title {
+            font-weight: 600;
+            color: #60a5fa;
+            margin-bottom: 8px;
+        }
+        .schema-field {
+            display: flex;
+            margin-bottom: 4px;
+            padding-left: 8px;
+        }
+        .field-name {
+            color: #c084fc;
+            min-width: 100px;
+            font-family: "SF Mono", Menlo, monospace;
+        }
+        .field-type {
+            color: #888;
+            min-width: 80px;
+        }
+        .field-desc {
+            color: #aaa;
+        }
+        .example {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            font-family: "SF Mono", Menlo, monospace;
+            color: #22c55e;
+        }
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span class="title">Quick Task</span>
+        <button class="help-btn" id="helpBtn" onclick="toggleHelp()" title="Show schema help">?</button>
+    </div>
+
+    <div class="input-group">
+        <div class="input-label">Enter prompt</div>
+        <input type="text" class="input-field" id="promptInput"
+               placeholder="e.g., TaskCreate: Fix login bug" autofocus>
+    </div>
+
+    <div class="schema-help" id="schemaHelp">
+        <div class="schema-section">
+            <div class="schema-title">TaskCreate (Optional Fields)</div>
+            <div class="schema-field">
+                <span class="field-name">activeForm</span>
+                <span class="field-type">string</span>
+                <span class="field-desc">Spinner text (e.g., "Fixing bug")</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">metadata</span>
+                <span class="field-type">object</span>
+                <span class="field-desc">Key-value pairs for custom data</span>
+            </div>
+            <div class="example">TaskCreate: Fix bug, metadata: {priority: high}</div>
+        </div>
+
+        <div class="schema-section">
+            <div class="schema-title">TaskUpdate (Optional Fields)</div>
+            <div class="schema-field">
+                <span class="field-name">status</span>
+                <span class="field-type">enum</span>
+                <span class="field-desc">pending | in_progress | completed | deleted</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">subject</span>
+                <span class="field-type">string</span>
+                <span class="field-desc">New task title</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">description</span>
+                <span class="field-type">string</span>
+                <span class="field-desc">New task description</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">activeForm</span>
+                <span class="field-type">string</span>
+                <span class="field-desc">Spinner text when in_progress</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">addBlocks</span>
+                <span class="field-type">string[]</span>
+                <span class="field-desc">Task IDs this task blocks</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">addBlockedBy</span>
+                <span class="field-type">string[]</span>
+                <span class="field-desc">Task IDs blocking this task</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">owner</span>
+                <span class="field-type">string</span>
+                <span class="field-desc">Task owner/assignee</span>
+            </div>
+            <div class="schema-field">
+                <span class="field-name">metadata</span>
+                <span class="field-type">object</span>
+                <span class="field-desc">Merge metadata (null to delete key)</span>
+            </div>
+            <div class="example">TaskUpdate: #1 status completed</div>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn btn-cancel" onclick="closeDialog()">Cancel</button>
+        <button class="btn btn-primary" id="submitBtn" onclick="submitPrompt()">Run</button>
+    </div>
+
+    <script>
+        function toggleHelp() {
+            var help = document.getElementById('schemaHelp');
+            var btn = document.getElementById('helpBtn');
+            help.classList.toggle('visible');
+            btn.classList.toggle('active');
+        }
+
+        function closeDialog() {
+            window.webkit.messageHandlers.quickTaskBridge.postMessage({
+                action: 'close'
+            });
+        }
+
+        function submitPrompt() {
+            var input = document.getElementById('promptInput');
+            var prompt = input.value.trim();
+            if (!prompt) {
+                input.focus();
+                return;
+            }
+
+            var btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Running...';
+
+            window.webkit.messageHandlers.quickTaskBridge.postMessage({
+                action: 'submit',
+                prompt: prompt
+            });
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeDialog();
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                submitPrompt();
+            }
+            if (e.key === '?' && e.shiftKey) {
+                e.preventDefault();
+                toggleHelp();
+            }
+        });
+
+        document.getElementById('promptInput').focus();
+    </script>
+</body>
+</html>
+]]
+
+    -- UserContent 생성
+    if not quickTaskUserContent then
+        quickTaskUserContent = hs.webview.usercontent.new("quickTaskBridge")
+        quickTaskUserContent:setCallback(function(msg)
+            log("QuickTask message: " .. hs.json.encode(msg.body))
+
+            if msg.body.action == "close" then
+                if quickTaskWebview then
+                    quickTaskWebview:delete()
+                    quickTaskWebview = nil
+                end
+            elseif msg.body.action == "submit" then
+                local prompt = msg.body.prompt
+                if quickTaskWebview then
+                    quickTaskWebview:delete()
+                    quickTaskWebview = nil
+                end
+                if prompt and prompt ~= "" then
+                    obj:quickTaskUpdate(prompt)
+                end
+            end
+        end)
+    end
+
+    quickTaskWebview = hs.webview.new(rect, {}, quickTaskUserContent)
+    quickTaskWebview:windowStyle({"titled", "closable", "utility", "HUD"})
+    quickTaskWebview:level(hs.drawing.windowLevels.floating)
+    quickTaskWebview:allowTextEntry(true)
+    quickTaskWebview:shadow(true)
+    quickTaskWebview:alpha(0.98)
+    quickTaskWebview:windowTitle("Quick Task")
+    quickTaskWebview:html(html)
+    quickTaskWebview:show()
+    quickTaskWebview:bringToFront()
+
+    log("QuickTask dialog opened")
+    return self
 end
 
 --- Claude Code 세션 실행
@@ -1270,8 +1847,19 @@ function obj:stop()
         webview:delete()
         webview = nil
     end
+    if detailWebview then
+        detailWebview:delete()
+        detailWebview = nil
+    end
+    if quickTaskWebview then
+        quickTaskWebview:delete()
+        quickTaskWebview = nil
+    end
     if usercontent then
         usercontent = nil
+    end
+    if quickTaskUserContent then
+        quickTaskUserContent = nil
     end
     isVisible = false
     cwdCache = {}
