@@ -4,7 +4,7 @@ Hammerspoon Spoon for viewing Claude Code tasks in a floating window.
 
 ## Demo
 
-![ClaudeTasks spoon](https://github.com/user-attachments/assets/71068e53-ae80-433e-86de-3f158b534c20)
+![Clipboard-20260129-135743-665](https://github.com/user-attachments/assets/fab18506-2a2a-4fcc-adfc-f30a96ff31c3)
 
 ## Features
 
