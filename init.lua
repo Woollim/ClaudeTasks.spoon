@@ -39,11 +39,14 @@ obj.config = {
 
 local function discoverClaudePath()
     if obj.config.claudePath then return obj.config.claudePath end
-    local handle = io.popen("which claude 2>/dev/null")
-    if handle then
-        local path = handle:read("*l")
-        handle:close()
-        if path and path ~= "" then return path end
+    -- GUI 앱은 PATH가 제한적이므로 일반적인 설치 경로를 직접 탐색
+    local candidates = {
+        os.getenv("HOME") .. "/.local/bin/claude",
+        "/usr/local/bin/claude",
+        "/opt/homebrew/bin/claude",
+    }
+    for _, path in ipairs(candidates) do
+        if hs.fs.attributes(path) then return path end
     end
     return nil
 end
@@ -83,6 +86,7 @@ local pathWatcher = nil
 local refreshTimer = nil
 local isVisible = false
 local usercontent = nil  -- JS-Lua 브릿지
+local cwdCache = {}  -- sessionId -> cwd path cache
 
 -- ============================================================================
 -- 유틸리티 함수
@@ -197,6 +201,36 @@ local function listSessionDirs()
 end
 
 -- ============================================================================
+-- CWD 추출 함수
+-- ============================================================================
+
+local function decodeCwdPath(encodedDir)
+    -- Encoding: / → -, /. → --
+    local path = encodedDir:gsub("%-%-", "\001")  -- -- → temp marker
+    path = path:gsub("^%-", "/")                   -- leading - → /
+    path = path:gsub("%-", "/")                    -- remaining - → /
+    path = path:gsub("\001", "/.")                 -- temp marker → /.
+    return path
+end
+
+local function getCwdFromSessionId(sessionId)
+    if cwdCache[sessionId] then return cwdCache[sessionId] end
+
+    local projectsDir = os.getenv("HOME") .. "/.claude/projects"
+    if not fileExists(projectsDir) then return nil end
+
+    for _, encodedDir in ipairs(listDir(projectsDir)) do
+        local sessionFile = projectsDir .. "/" .. encodedDir .. "/" .. sessionId .. ".jsonl"
+        if fileExists(sessionFile) then
+            local cwd = decodeCwdPath(encodedDir)
+            cwdCache[sessionId] = cwd
+            return cwd
+        end
+    end
+    return nil
+end
+
+-- ============================================================================
 -- 태스크 로딩
 -- ============================================================================
 
@@ -231,6 +265,7 @@ local function loadAllTasks()
                     if task then
                         task._sessionId = sessionId
                         task._filepath = filepath
+                        task._cwd = getCwdFromSessionId(sessionId)
                         table.insert(tasks, task)
                     end
                 end
@@ -357,11 +392,14 @@ local function generateHTML(tasks)
             background: #22c55e;
             color: #fff;
             border: none;
-            padding: 4px 10px;
+            width: 32px;
+            height: 32px;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         .launch-btn:hover {
             background: #16a34a;
@@ -369,12 +407,6 @@ local function generateHTML(tasks)
         .launch-btn:disabled {
             background: #4b5563;
             cursor: not-allowed;
-        }
-        .quick-update-btn {
-            background: #f59e0b;
-        }
-        .quick-update-btn:hover:not(:disabled) {
-            background: #d97706;
         }
         .count {
             font-size: 12px;
@@ -522,6 +554,8 @@ local function generateHTML(tasks)
         .task-content {
             flex: 1;
             min-width: 0;
+            position: relative;
+            padding-right: 36px;
         }
         .task-subject {
             font-weight: 500;
@@ -553,6 +587,38 @@ local function generateHTML(tasks)
             padding: 2px 6px;
             border-radius: 4px;
             color: #888;
+            cursor: pointer;
+        }
+        .session-badge:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        .cwd-path {
+            font-size: 10px;
+            color: #555;
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 280px;
+        }
+        .task-launch-btn {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            background: #22c55e;
+            border: none;
+            color: #fff;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .task-launch-btn:hover {
+            background: #16a34a;
         }
     </style>
     <script>
@@ -621,6 +687,24 @@ local function generateHTML(tasks)
             });
         }
 
+        function copySessionId(e, fullId) {
+            e.stopPropagation();
+            navigator.clipboard.writeText(fullId).then(function() {
+                var badge = e.target;
+                var orig = badge.textContent;
+                badge.textContent = 'Copied!';
+                setTimeout(function() { badge.textContent = orig; }, 1000);
+            });
+        }
+
+        function launchClaudeWithCwd(sessionId, cwd) {
+            window.webkit.messageHandlers.taskBridge.postMessage({
+                action: 'launchClaudeWithCwd',
+                sessionId: sessionId,
+                cwd: cwd
+            });
+        }
+
         // 키보드 단축키
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -673,16 +757,18 @@ local function generateHTML(tasks)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. escapeHtml(task._sessionId) .. '\', \'' .. escapeHtml(task._cwd) .. '\')" title="Launch in ' .. escapeHtml(task._cwd) .. '">▶</button>' or ''
             html = html .. [[
         <div class="task">
             <span class="task-icon status-in_progress">]] .. getStatusIcon("in_progress") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. escapeHtml(task.subject) .. [[</div>
                 <div class="task-meta">
-                    <span class="session-badge">]] .. escapeHtml(task._sessionId:sub(1, 7)) .. [[</span>
+                    <span class="session-badge" onclick="copySessionId(event, ']] .. escapeHtml(task._sessionId) .. [[')" title="Click to copy: ]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId:sub(1, 8)) .. [[...</span>
                     #]] .. escapeHtml(tostring(task.id)) .. [[
                 </div>
-                ]] .. blocked .. [[
+                ]] .. (task._cwd and '<div class="cwd-path" title="' .. escapeHtml(task._cwd) .. '">' .. escapeHtml(task._cwd) .. '</div>' or '') .. [[
+                ]] .. blocked .. launchBtn .. [[
             </div>
         </div>
 ]]
@@ -701,16 +787,18 @@ local function generateHTML(tasks)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. escapeHtml(task._sessionId) .. '\', \'' .. escapeHtml(task._cwd) .. '\')" title="Launch in ' .. escapeHtml(task._cwd) .. '">▶</button>' or ''
             html = html .. [[
         <div class="task">
             <span class="task-icon status-pending">]] .. getStatusIcon("pending") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. escapeHtml(task.subject) .. [[</div>
                 <div class="task-meta">
-                    <span class="session-badge">]] .. escapeHtml(task._sessionId:sub(1, 7)) .. [[</span>
+                    <span class="session-badge" onclick="copySessionId(event, ']] .. escapeHtml(task._sessionId) .. [[')" title="Click to copy: ]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId:sub(1, 8)) .. [[...</span>
                     #]] .. escapeHtml(tostring(task.id)) .. [[
                 </div>
-                ]] .. blocked .. [[
+                ]] .. (task._cwd and '<div class="cwd-path" title="' .. escapeHtml(task._cwd) .. '">' .. escapeHtml(task._cwd) .. '</div>' or '') .. [[
+                ]] .. blocked .. launchBtn .. [[
             </div>
         </div>
 ]]
@@ -727,15 +815,17 @@ local function generateHTML(tasks)
 ]]
         for i = 1, displayCount do
             local task = completedTasks[i]
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. escapeHtml(task._sessionId) .. '\', \'' .. escapeHtml(task._cwd) .. '\')" title="Launch in ' .. escapeHtml(task._cwd) .. '">▶</button>' or ''
             html = html .. [[
         <div class="task" style="opacity: 0.6;">
             <span class="task-icon status-completed">]] .. getStatusIcon("completed") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. escapeHtml(task.subject) .. [[</div>
                 <div class="task-meta">
-                    <span class="session-badge">]] .. escapeHtml(task._sessionId:sub(1, 7)) .. [[</span>
+                    <span class="session-badge" onclick="copySessionId(event, ']] .. escapeHtml(task._sessionId) .. [[')" title="Click to copy: ]] .. escapeHtml(task._sessionId) .. [[">]] .. escapeHtml(task._sessionId:sub(1, 8)) .. [[...</span>
                     #]] .. escapeHtml(tostring(task.id)) .. [[
                 </div>
+                ]] .. (task._cwd and '<div class="cwd-path" title="' .. escapeHtml(task._cwd) .. '">' .. escapeHtml(task._cwd) .. '</div>' or '') .. launchBtn .. [[
             </div>
         </div>
 ]]
@@ -786,6 +876,8 @@ local function createUserContent()
             obj:createTask(msg.body.subject)
         elseif msg.body.action == "launchClaude" then
             obj:launchClaudeWithTaskList()
+        elseif msg.body.action == "launchClaudeWithCwd" then
+            obj:launchClaudeWithCwd(msg.body.sessionId, msg.body.cwd)
         elseif msg.body.action == "showQuickUpdateDialog" then
             local button, text = hs.dialog.textPrompt("Quick Task", "Enter prompt (e.g., 'TaskCreate: Fix bug' or 'TaskUpdate: #3 done'):", "", "OK", "Cancel")
             if button == "OK" and text and text ~= "" then
@@ -924,8 +1016,17 @@ function obj:show()
     end
     refreshWebView()
     webview:show()
+    webview:bringToFront()
     isVisible = true
     startPathWatcher()
+
+    -- Focus session input after DOM ready
+    hs.timer.doAfter(0.1, function()
+        if webview then
+            webview:evaluateJavaScript("document.getElementById('sessionInput').focus(); document.getElementById('sessionInput').select();")
+        end
+    end)
+
     log("Task viewer shown")
     return self
 end
@@ -1047,6 +1148,8 @@ function obj:quickTaskUpdate(prompt)
         CLAUDE_CODE_TASK_LIST_ID = taskListId
     }
 
+    local systemPrompt = "This is a lightweight Todo Task management command. Use TaskCreate or TaskUpdate tools immediately based on the user's input. Do not ask for clarification - execute the tool directly."
+
     log("QuickTaskUpdate: " .. prompt .. " (taskListId: " .. taskListId .. ")")
 
     local task = hs.task.new(claudePath, function(exitCode, stdout, stderr)
@@ -1074,6 +1177,7 @@ function obj:quickTaskUpdate(prompt)
         "--strict-mcp-config",
         "--dangerously-skip-permissions",
         "--setting-sources", "",
+        "--system-prompt", systemPrompt,
         "--verbose",
         "--",
         prompt
@@ -1082,7 +1186,7 @@ function obj:quickTaskUpdate(prompt)
     task:setEnvironment(env)
     task:setWorkingDirectory(os.getenv("HOME") .. "/.claude")
     task:start()
-    hs.alert.show("Running TaskUpdate...", 1)
+    hs.alert.show("Running Quick Task...", 1)
 end
 
 --- Claude Code 세션 실행
@@ -1117,6 +1221,40 @@ function obj:launchClaudeWithTaskList()
     hs.alert.show("Launching Claude...", 1)
 end
 
+--- Claude Code 세션을 특정 cwd에서 실행
+function obj:launchClaudeWithCwd(sessionId, cwd)
+    if not sessionId or sessionId == "" then
+        hs.alert.show("No session ID", 2)
+        return
+    end
+    if not cwd or cwd == "" then
+        hs.alert.show("No working directory", 2)
+        return
+    end
+
+    local terminalPath = discoverTerminalApp()
+    if not terminalPath then
+        hs.alert.show("No terminal app found", 2)
+        return
+    end
+
+    local shell = getShell()
+    local shellCmd = string.format("cd '%s' && CLAUDE_CODE_TASK_LIST_ID=%s claude -r %s", cwd, sessionId, sessionId)
+
+    log("Launching Claude with cwd: " .. shellCmd)
+
+    local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
+        if exitCode ~= 0 then
+            log("Terminal launch error: " .. (stderr or "unknown"))
+        end
+    end, {
+        "-e", shell, "-c", shellCmd
+    })
+
+    task:start()
+    hs.alert.show("Launching Claude in " .. cwd:match("[^/]+$") .. "...", 1)
+end
+
 --- 모듈 시작 (파일 감시 시작)
 function obj:start()
     loadState()  -- 저장된 상태 로드
@@ -1136,6 +1274,7 @@ function obj:stop()
         usercontent = nil
     end
     isVisible = false
+    cwdCache = {}
     log("Claude Tasks module stopped")
     return self
 end
