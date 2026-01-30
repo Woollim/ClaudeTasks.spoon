@@ -41,10 +41,20 @@ spoon.ClaudeTasks:start()
 
 ## Key Conventions
 
-- **State persistence**: Only `currentTaskListId` is persisted (to `state.json`)
+- **State persistence**: `currentTaskListId` and `lastUpdateCheck` persisted to `state.json`
 - **External tools**: Always auto-discovered, never hardcoded paths
 - **Task sorting**: Numeric IDs first, then string IDs alphabetically
 - **Debounce pattern**: Timer-based debounce for file watcher events (0.2s default)
+
+## Update Checker
+
+Built-in update checker uses GitHub API to check for new releases:
+
+- **Auto-check**: Runs on `start()` with 24-hour interval (configurable)
+- **Manual check**: `spoon.ClaudeTasks:checkForUpdates(true)`
+- **Disable**: `spoon.ClaudeTasks:configure({checkForUpdates = false})`
+
+SpoonInstall compatible via `docs.json` metadata file.
 
 ## Dependencies
 

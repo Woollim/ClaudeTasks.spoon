@@ -6,7 +6,7 @@ local obj = {}
 
 -- Spoon Metadata
 obj.name = "ClaudeTasks"
-obj.version = "1.2.0"
+obj.version = "1.3.0"
 obj.author = "jongwony <lastone9182@gmail.com>"
 obj.license = "MIT - https://opensource.org/licenses/MIT"
 obj.homepage = "https://github.com/jongwony/ClaudeTasks.spoon"
@@ -22,7 +22,7 @@ obj.config = {
     height = 580,
     margin = 20,
     refreshDebounce = 0.2,
-    debugMode = false,
+    debugMode = true,
 
     -- Session
     taskListId = os.getenv("CLAUDE_CODE_TASK_LIST_ID"),
@@ -31,6 +31,10 @@ obj.config = {
     claudePath = nil,
     terminalApp = nil,
     shell = nil,
+
+    -- Update Checker
+    checkForUpdates = true,          -- start() 시 자동 체크
+    updateCheckInterval = 86400,     -- 체크 간격 (초, 기본 24시간)
 }
 
 -- ============================================================================
@@ -74,7 +78,8 @@ end
 
 obj.state = {
     currentTaskListId = nil,
-    configPath = nil  -- Set in init()
+    configPath = nil,  -- Set in init()
+    lastUpdateCheck = nil,  -- 마지막 업데이트 체크 시간 (Unix timestamp)
 }
 
 -- ============================================================================
@@ -158,6 +163,7 @@ local function loadState()
         local data = parseJSON(content)
         if data then
             obj.state.currentTaskListId = data.currentTaskListId
+            obj.state.lastUpdateCheck = data.lastUpdateCheck
             obj.config.taskListId = data.currentTaskListId
             log("State loaded: " .. (data.currentTaskListId or "nil"))
         end
@@ -166,7 +172,8 @@ end
 
 local function saveState()
     local data = hs.json.encode({
-        currentTaskListId = obj.state.currentTaskListId
+        currentTaskListId = obj.state.currentTaskListId,
+        lastUpdateCheck = obj.state.lastUpdateCheck
     })
     local f = io.open(obj.state.configPath, "w")
     if f then
@@ -1025,6 +1032,135 @@ local function refreshWebView()
 end
 
 -- ============================================================================
+-- 업데이트 체커
+-- ============================================================================
+
+-- 시맨틱 버전 비교 (a > b 이면 true)
+local function isNewerVersion(latest, current)
+    local function parseVersion(v)
+        local major, minor, patch = v:match("^v?(%d+)%.(%d+)%.(%d+)")
+        return {
+            tonumber(major) or 0,
+            tonumber(minor) or 0,
+            tonumber(patch) or 0
+        }
+    end
+    local l = parseVersion(latest)
+    local c = parseVersion(current)
+    for i = 1, 3 do
+        if l[i] > c[i] then return true end
+        if l[i] < c[i] then return false end
+    end
+    return false
+end
+
+-- GitHub API로 최신 릴리즈 확인
+local function checkForUpdates(callback)
+    local repoOwner = obj.homepage:match("github.com/([^/]+)")
+    local repoName = obj.homepage:match("github.com/[^/]+/([^/]+)")
+
+    if not repoOwner or not repoName then
+        log("Could not parse GitHub repo from homepage")
+        if callback then callback(nil, "Invalid homepage URL") end
+        return
+    end
+
+    local apiUrl = string.format(
+        "https://api.github.com/repos/%s/%s/releases/latest",
+        repoOwner, repoName
+    )
+
+    log("Checking for updates: " .. apiUrl)
+
+    hs.http.asyncGet(apiUrl, {
+        ["Accept"] = "application/vnd.github+json",
+        ["User-Agent"] = "Hammerspoon-ClaudeTasks"
+    }, function(status, body, headers)
+        if status ~= 200 then
+            log("Update check failed: HTTP " .. status)
+            if callback then callback(nil, "HTTP " .. status) end
+            return
+        end
+
+        local release = parseJSON(body)
+        if not release or not release.tag_name then
+            log("Update check failed: Invalid response")
+            if callback then callback(nil, "Invalid response") end
+            return
+        end
+
+        local latestVersion = release.tag_name
+        local currentVersion = obj.version
+        local hasUpdate = isNewerVersion(latestVersion, currentVersion)
+
+        log(string.format("Version check: current=%s, latest=%s, hasUpdate=%s",
+            currentVersion, latestVersion, tostring(hasUpdate)))
+
+        -- 체크 시간 저장
+        obj.state.lastUpdateCheck = os.time()
+        saveState()
+
+        if callback then
+            callback({
+                hasUpdate = hasUpdate,
+                currentVersion = currentVersion,
+                latestVersion = latestVersion,
+                releaseUrl = release.html_url,
+                releaseNotes = release.body,
+                publishedAt = release.published_at
+            })
+        end
+    end)
+end
+
+-- 업데이트 알림 표시
+local function showUpdateNotification(updateInfo)
+    if not updateInfo or not updateInfo.hasUpdate then return end
+
+    local notification = hs.notify.new(function(n)
+        -- 알림 클릭 시 릴리즈 페이지 열기
+        if updateInfo.releaseUrl then
+            hs.urlevent.openURL(updateInfo.releaseUrl)
+        end
+    end, {
+        title = "ClaudeTasks Update Available",
+        subTitle = string.format("v%s → %s", updateInfo.currentVersion, updateInfo.latestVersion),
+        informativeText = "Click to view release notes",
+        hasActionButton = true,
+        actionButtonTitle = "View",
+        withdrawAfter = 10
+    })
+    notification:send()
+end
+
+-- 업데이트 체크 실행 (간격 고려)
+local function maybeCheckForUpdates()
+    if not obj.config.checkForUpdates then
+        log("Update check disabled")
+        return
+    end
+
+    local now = os.time()
+    local lastCheck = obj.state.lastUpdateCheck or 0
+    local interval = obj.config.updateCheckInterval
+
+    if (now - lastCheck) < interval then
+        log(string.format("Skipping update check (last check: %d seconds ago)", now - lastCheck))
+        return
+    end
+
+    checkForUpdates(function(updateInfo, err)
+        if err then
+            log("Update check error: " .. err)
+            return
+        end
+        if updateInfo and updateInfo.hasUpdate then
+            showUpdateNotification(updateInfo)
+        end
+    end)
+end
+
+-- ============================================================================
 -- 파일 감시
 -- ============================================================================
 
@@ -1836,6 +1972,14 @@ end
 function obj:start()
     loadState()  -- 저장된 상태 로드
     startPathWatcher()
+
+    -- 업데이트 체크 (비동기, 딜레이 적용)
+    if obj.config.checkForUpdates then
+        hs.timer.doAfter(2, function()
+            maybeCheckForUpdates()
+        end)
+    end
+
     log("Claude Tasks module started")
     return self
 end
@@ -1874,6 +2018,26 @@ function obj:configure(options)
             obj.config[k] = v
         end
     end
+    return self
+end
+
+--- 수동 업데이트 체크
+--- @param showNoUpdate boolean 업데이트 없을 때도 알림 표시
+function obj:checkForUpdates(showNoUpdate)
+    checkForUpdates(function(updateInfo, err)
+        if err then
+            hs.alert.show("Update check failed: " .. err, 3)
+            return
+        end
+        if updateInfo.hasUpdate then
+            showUpdateNotification(updateInfo)
+        elseif showNoUpdate then
+            hs.alert.show(string.format(
+                "ClaudeTasks v%s is up to date",
+                updateInfo.currentVersion
+            ), 2)
+        end
+    end)
     return self
 end
 
