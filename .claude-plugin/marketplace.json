@@ -1,6 +1,10 @@
 {
-  "name": "ClaudeTasks Marketplace",
+  "name": "claudetasks-marketplace",
   "description": "Claude Code plugins for task management",
+  "owner": {
+    "name": "jongwony",
+    "url": "https://github.com/jongwony"
+  },
   "plugins": [
     {
       "name": "task-save",

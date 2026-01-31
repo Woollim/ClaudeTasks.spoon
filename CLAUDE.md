@@ -12,15 +12,15 @@ Modular Spoon architecture with coordinator pattern:
 
 ```
 ClaudeTasks.spoon/
-├── init.lua              # Thin coordinator (~490 lines)
+├── init.lua              # Thin coordinator, routes WebView actions to modules
 ├── lib/
 │   ├── utils.lua         # Pure utilities: log, file ops, JSON, HTML escape
 │   ├── discovery.lua     # CLI/terminal app discovery
 │   ├── state.lua         # State persistence and session management
 │   ├── tasks.lua         # Task loading and CWD extraction
 │   ├── html.lua          # HTML/CSS/JS generation
-│   ├── webview.lua       # WebView management and UI components
-│   ├── watcher.lua       # File system watcher
+│   ├── webview.lua       # WebView management (main, detail, quickTask)
+│   ├── watcher.lua       # File system watcher with debounce
 │   └── updater.lua       # GitHub release update checker
 ├── state.json
 └── docs.json
@@ -66,6 +66,10 @@ WebView communicates with Lua via `hs.webview.usercontent`. JavaScript calls `we
 
 Tasks are stored in `~/.claude/tasks/{sessionId}/*.json`. Each session directory contains individual task JSON files.
 
+### CWD Path Encoding
+
+Claude Code encodes working directory paths in session IDs where `/` → `-` and `/.` → `--`. The `tasks.decodeCwdPath()` function resolves ambiguity (e.g., `team-attention` directory name vs `/team/attention` path) by walking the filesystem to find valid paths. This is critical for the "Launch Claude" feature.
+
 ## Development Commands
 
 No build/test/lint commands. This is a pure Lua Spoon.
@@ -84,6 +88,8 @@ spoon.ClaudeTasks:start()
 - **External tools**: Always auto-discovered, never hardcoded paths
 - **Task sorting**: Numeric IDs first, then string IDs alphabetically
 - **Debounce pattern**: Timer-based debounce for file watcher events (0.2s default)
+- **iTerm2 handling**: Uses AppleScript instead of `-e` flag (doesn't support shell args)
+- **Completed tasks cap**: Only 5 most recent shown to avoid clutter
 
 ## Update Checker
 
@@ -101,6 +107,25 @@ See README.md for complete API documentation. Key methods:
 - `obj:start()`, `obj:stop()`, `obj:show()`, `obj:hide()`, `obj:toggle()`
 - `obj:refresh()`, `obj:setTaskListId()`, `obj:createTask()`, `obj:quickTaskUpdate()`
 - `obj:launchClaudeWithTaskList()`, `obj:configure()`, `obj:checkForUpdates()`, `obj:status()`, `obj:bindHotkeys()`
+
+## Quick Task Implementation
+
+Quick Task uses Claude CLI with ephemeral flags to avoid side effects:
+```bash
+claude -p --model haiku --no-session-persistence --disable-slash-commands \
+  --strict-mcp-config --dangerously-skip-permissions --setting-sources ""
+```
+
+## Keyboard Shortcuts
+
+WebView embedded shortcuts (in `html.lua`):
+- `Cmd+Enter` - Create task from input
+- `Cmd+E` - Open Quick Task dialog
+- `Escape` - Collapse form / close dialog
+
+Default Hammerspoon hotkeys (configurable via `bindHotkeys`):
+- `Opt+.` - Toggle task viewer
+- `Cmd+Alt+T` - Show status summary
 
 ## Dependencies
 
