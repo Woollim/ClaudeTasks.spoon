@@ -212,12 +212,62 @@ end
 -- ============================================================================
 
 local function decodeCwdPath(encodedDir)
-    -- Encoding: / → -, /. → --
-    local path = encodedDir:gsub("%-%-", "\001")  -- -- → temp marker
-    path = path:gsub("^%-", "/")                   -- leading - → /
-    path = path:gsub("%-", "/")                    -- remaining - → /
-    path = path:gsub("\001", "/.")                 -- temp marker → /.
-    return path
+    -- Claude encodes paths: / → -, /. → --
+    -- Problem: hyphens in dir names (e.g. team-attention) are ambiguous.
+    -- Solution: walk the filesystem to resolve the correct path.
+    local parts = {}
+    -- Split on '-' but first handle '--' (encoded /.)
+    local encoded = encodedDir:gsub("%-%-", "\001")
+    -- Remove leading '-' (represents root /)
+    if encoded:sub(1,1) == "-" then
+        encoded = encoded:sub(2)
+    elseif encoded:sub(1,1) == "\001" then
+        -- leading -- means /.
+        encoded = encoded:sub(2)
+        parts[1] = "."
+    end
+    local segments = {}
+    for seg in encoded:gmatch("[^\001]+") do
+        table.insert(segments, seg)
+    end
+    -- For each '--' separated segment, resolve dash ambiguity via filesystem
+    local function resolveSegment(basePath, segment)
+        local tokens = {}
+        for t in segment:gmatch("[^%-]+") do
+            table.insert(tokens, t)
+        end
+        if #tokens == 0 then return basePath end
+        -- Try greedily matching longest existing directory names
+        local function tryResolve(idx, currentPath)
+            if idx > #tokens then return currentPath end
+            local accumulated = tokens[idx]
+            for j = idx, #tokens do
+                if j > idx then
+                    accumulated = accumulated .. "-" .. tokens[j]
+                end
+                local candidate = currentPath .. "/" .. accumulated
+                if j == #tokens then
+                    -- Last possible combo, must use it
+                    return candidate
+                end
+                if hs.fs.attributes(candidate, "mode") == "directory" then
+                    local result = tryResolve(j + 1, candidate)
+                    if result then return result end
+                end
+            end
+            -- Fallback: treat each token as a directory
+            return tryResolve(idx + 1, currentPath .. "/" .. tokens[idx])
+        end
+        return tryResolve(1, basePath)
+    end
+    local result = ""
+    for i, seg in ipairs(segments) do
+        if i > 1 or (parts[1] == ".") then
+            result = result .. "/."
+        end
+        result = resolveSegment(result, seg)
+    end
+    return result
 end
 
 local function getCwdFromSessionId(sessionId)
@@ -1952,19 +2002,35 @@ function obj:launchClaudeWithCwd(sessionId, cwd)
     end
 
     local shell = getShell()
-    local shellCmd = string.format("cd '%s' && CLAUDE_CODE_TASK_LIST_ID=%s claude -r %s", cwd, sessionId, sessionId)
+    local claudePath = discoverClaudePath() or "claude"
+    local shellCmd = string.format("cd '%s' && CLAUDE_CODE_TASK_LIST_ID=%s %s -r %s", cwd, sessionId, claudePath, sessionId)
 
     log("Launching Claude with cwd: " .. shellCmd)
 
-    local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
-        if exitCode ~= 0 then
-            log("Terminal launch error: " .. (stderr or "unknown"))
-        end
-    end, {
-        "-e", shell, "-c", shellCmd
-    })
+    -- iTerm2: use AppleScript since it doesn't support -e shell -c cmd args
+    if terminalPath:find("iTerm") then
+        local escapedCmd = shellCmd:gsub("\\", "\\\\"):gsub('"', '\\"')
+        local script = [[
+            tell application "iTerm"
+                activate
+                create window with default profile
+                tell current session of current window
+                    write text "]] .. escapedCmd .. [["
+                end tell
+            end tell
+        ]]
+        hs.osascript.applescript(script)
+    else
+        local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
+            if exitCode ~= 0 then
+                log("Terminal launch error: " .. (stderr or "unknown"))
+            end
+        end, {
+            "-e", shell, "-c", shellCmd
+        })
+        task:start()
+    end
 
-    task:start()
     hs.alert.show("Launching Claude in " .. cwd:match("[^/]+$") .. "...", 1)
 end
 
