@@ -438,7 +438,7 @@ function M.showQuickTaskDialog(actionHandler, log)
                placeholder="e.g., TaskCreate: Fix login bug" autofocus>
     </div>
 
-    <div class="schema-help" id="schemaHelp">
+    <div class="schema-help visible" id="schemaHelp">
         <div class="schema-section">
             <div class="schema-title">TaskCreate (Optional Fields)</div>
             <div class="schema-field">
