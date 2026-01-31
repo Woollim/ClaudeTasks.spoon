@@ -350,19 +350,35 @@ function obj:launchClaudeWithCwd(sessionId, cwd)
     end
 
     local shell = discovery.getShell(obj.config.shell)
-    local shellCmd = string.format("cd '%s' && CLAUDE_CODE_TASK_LIST_ID=%s claude -r %s", cwd, sessionId, sessionId)
+    local claudePath = discovery.discoverClaudePath(obj.config.claudePath) or "claude"
+    local shellCmd = string.format("cd '%s' && CLAUDE_CODE_TASK_LIST_ID=%s %s -r %s", cwd, sessionId, claudePath, sessionId)
 
     log("Launching Claude with cwd: " .. shellCmd)
 
-    local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
-        if exitCode ~= 0 then
-            log("Terminal launch error: " .. (stderr or "unknown"))
-        end
-    end, {
-        "-e", shell, "-c", shellCmd
-    })
+    -- iTerm2: use AppleScript since it doesn't support -e shell -c cmd args
+    if terminalPath:find("iTerm") then
+        local escapedCmd = shellCmd:gsub("\\", "\\\\"):gsub('"', '\\"')
+        local script = [[
+            tell application "iTerm"
+                activate
+                create window with default profile
+                tell current session of current window
+                    write text "]] .. escapedCmd .. [["
+                end tell
+            end tell
+        ]]
+        hs.osascript.applescript(script)
+    else
+        local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
+            if exitCode ~= 0 then
+                log("Terminal launch error: " .. (stderr or "unknown"))
+            end
+        end, {
+            "-e", shell, "-c", shellCmd
+        })
+        task:start()
+    end
 
-    task:start()
     hs.alert.show("Launching Claude in " .. cwd:match("[^/]+$") .. "...", 1)
 end
 
