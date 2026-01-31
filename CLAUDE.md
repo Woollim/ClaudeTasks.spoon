@@ -8,20 +8,59 @@ ClaudeTasks.spoon is a Hammerspoon Spoon that provides a floating WebView-based 
 
 ## Architecture
 
-Single-file Spoon architecture in `init.lua` (~1200 lines) with these key sections:
+Modular Spoon architecture with coordinator pattern:
 
-1. **Configuration** (lines 19-34): UI dimensions, debounce timing, external tool paths
-2. **Discovery** (lines 40-66): Auto-discovers `claude` CLI, terminal app, shell
-3. **State Management** (lines 72-197): Persists session ID to `state.json`
-4. **Task Loading** (lines 203-253): Reads JSON task files from session directories
-5. **HTML Rendering** (lines 259-768): Dark-themed HTML/CSS/JS for WebView
-6. **WebView** (lines 774-844): Floating HUD window management
-7. **File Watching** (lines 850-907): Debounced `hs.pathwatcher` for auto-refresh
-8. **Public API** (lines 914-1205): Spoon methods (`start`, `stop`, `show`, `toggle`, etc.)
+```
+ClaudeTasks.spoon/
+├── init.lua              # Thin coordinator (~490 lines)
+├── lib/
+│   ├── utils.lua         # Pure utilities: log, file ops, JSON, HTML escape
+│   ├── discovery.lua     # CLI/terminal app discovery
+│   ├── state.lua         # State persistence and session management
+│   ├── tasks.lua         # Task loading and CWD extraction
+│   ├── html.lua          # HTML/CSS/JS generation
+│   ├── webview.lua       # WebView management and UI components
+│   ├── watcher.lua       # File system watcher
+│   └── updater.lua       # GitHub release update checker
+├── state.json
+└── docs.json
+```
+
+### Module Loading
+
+Hammerspoon Spoons cannot use `require()`. Uses `loadfile()` pattern:
+```lua
+local function loadModule(name)
+    local path = obj.spoonPath .. "/lib/" .. name .. ".lua"
+    local f, err = loadfile(path)
+    if not f then error("Failed to load " .. name .. ": " .. err) end
+    return f()
+end
+```
+
+### Circular Dependency Solution
+
+WebView callbacks reference `obj` methods. Solved via action handler injection:
+```lua
+-- init.lua: Action handler passed to webview module
+local function actionHandler(action, params)
+    if action == "setSession" then obj:setTaskListId(params.value)
+    elseif action == "createTask" then obj:createTask(params.subject)
+    -- ...
+    end
+end
+
+-- webview.lua: Receives callback, no direct obj reference
+function M.createUserContent(actionHandler, log)
+    usercontent:setCallback(function(msg)
+        actionHandler(msg.body.action, msg.body)
+    end)
+end
+```
 
 ### JS-Lua Bridge
 
-WebView communicates with Lua via `hs.webview.usercontent`. JavaScript calls `webkit.messageHandlers.hammerspoon.postMessage()` which triggers the `userContentController` callback in Lua.
+WebView communicates with Lua via `hs.webview.usercontent`. JavaScript calls `webkit.messageHandlers.taskBridge.postMessage()` which triggers the `userContentController` callback in Lua.
 
 ### Task File Structure
 
@@ -55,6 +94,13 @@ Built-in update checker uses GitHub API to check for new releases:
 - **Disable**: `spoon.ClaudeTasks:configure({checkForUpdates = false})`
 
 SpoonInstall compatible via `docs.json` metadata file.
+
+## Public API
+
+See README.md for complete API documentation. Key methods:
+- `obj:start()`, `obj:stop()`, `obj:show()`, `obj:hide()`, `obj:toggle()`
+- `obj:refresh()`, `obj:setTaskListId()`, `obj:createTask()`, `obj:quickTaskUpdate()`
+- `obj:launchClaudeWithTaskList()`, `obj:configure()`, `obj:checkForUpdates()`, `obj:status()`, `obj:bindHotkeys()`
 
 ## Dependencies
 
