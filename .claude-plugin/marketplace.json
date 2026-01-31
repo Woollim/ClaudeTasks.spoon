@@ -1,0 +1,10 @@
+{
+  "name": "ClaudeTasks Marketplace",
+  "description": "Claude Code plugins for task management",
+  "plugins": [
+    {
+      "name": "task-save",
+      "source": "./task-save"
+    }
+  ]
+}
