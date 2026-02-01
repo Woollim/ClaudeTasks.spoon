@@ -10,6 +10,7 @@ local detailWebview = nil
 local quickTaskWebview = nil
 local quickTaskUserContent = nil
 local isVisible = false
+local isOverlayMode = false
 
 -- Create user content controller for JS-Lua bridge
 function M.createUserContent(actionHandler, log)
@@ -587,6 +588,30 @@ function M.closeQuickTaskDialog()
     end
 end
 
+-- Toggle overlay mode (semi-transparent passthrough)
+function M.toggleOverlay(log)
+    if not webview then return false end
+
+    isOverlayMode = not isOverlayMode
+
+    if isOverlayMode then
+        webview:alpha(0.3)
+        webview:behavior({"canJoinAllSpaces", "stationary"})
+        log("Overlay mode enabled")
+    else
+        webview:alpha(0.98)
+        webview:behavior({})
+        log("Overlay mode disabled")
+    end
+
+    return isOverlayMode
+end
+
+-- Check overlay mode
+function M.isOverlayMode()
+    return isOverlayMode
+end
+
 -- Cleanup all webviews
 function M.cleanup()
     if webview then
@@ -604,6 +629,7 @@ function M.cleanup()
     usercontent = nil
     quickTaskUserContent = nil
     isVisible = false
+    isOverlayMode = false
 end
 
 return M
