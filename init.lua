@@ -416,6 +416,16 @@ function obj:stop()
     return self
 end
 
+function obj:toggleOverlay()
+    local enabled = webviewModule.toggleOverlay(log)
+    if enabled then
+        hs.alert.show("Overlay mode ON", 1)
+    else
+        hs.alert.show("Overlay mode OFF", 1)
+    end
+    return self
+end
+
 function obj:configure(options)
     if options then
         for k, v in pairs(options) do
@@ -482,7 +492,8 @@ end
 
 obj.defaultHotkeys = {
     toggle = {{"alt"}, "."},
-    status = {{"cmd", "alt"}, "T"}
+    status = {{"cmd", "alt"}, "T"},
+    overlay = {{"alt"}, "p"}
 }
 
 function obj:bindHotkeys(mapping)
@@ -495,7 +506,8 @@ function obj:bindHotkeys(mapping)
                 status.taskCount, status.pending, status.inProgress, status.completed
             )
             hs.alert.show(msg, 3)
-        end
+        end,
+        overlay = function() obj:toggleOverlay() end
     }
     hs.spoons.bindHotkeysToSpec(def, mapping)
     return self
