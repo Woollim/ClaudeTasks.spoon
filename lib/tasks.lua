@@ -58,10 +58,11 @@ function M.decodeCwdPath(encodedDir)
     end
     local result = ""
     for i, seg in ipairs(segments) do
+        local actualSeg = seg
         if i > 1 or (parts[1] == ".") then
-            result = result .. "/."
+            actualSeg = "." .. seg
         end
-        result = resolveSegment(result, seg)
+        result = resolveSegment(result, actualSeg)
     end
     return result
 end
