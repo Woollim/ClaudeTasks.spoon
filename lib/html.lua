@@ -635,6 +635,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             });
         }
 
+        function launchClaudeWithSession(sessionId) {
+            window.webkit.messageHandlers.taskBridge.postMessage({
+                action: 'launchClaudeWithSession',
+                sessionId: sessionId
+            });
+        }
+
         function showQuickUpdateDialog() {
             window.webkit.messageHandlers.taskBridge.postMessage({
                 action: 'showQuickUpdateDialog'
@@ -909,7 +916,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
             local descriptionHtml = ''
             local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
@@ -949,7 +956,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
             local descriptionHtml = ''
             local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
@@ -987,7 +994,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
 ]]
         for i = 1, displayCount do
             local task = completedTasks[i]
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
             local descriptionHtml = ''
             local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
