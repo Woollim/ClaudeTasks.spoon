@@ -105,7 +105,7 @@ local function actionHandler(action, params)
     elseif action == "showQuickUpdateDialog" then
         obj:showQuickTaskDialog()
     elseif action == "showTaskDetail" then
-        obj:showTaskDetailWindow(params.subject, params.description)
+        obj:showTaskDetailWindow(params.subject, params.description, params.metadata)
     end
 end
 
@@ -292,8 +292,8 @@ For TaskCreate: If description is not explicitly provided, infer a meaningful de
     hs.alert.show("Running Quick Task...", 1)
 end
 
-function obj:showTaskDetailWindow(subject, description)
-    webviewModule.showTaskDetailWindow(subject, description, utils, log)
+function obj:showTaskDetailWindow(subject, description, metadata)
+    webviewModule.showTaskDetailWindow(subject, description, metadata, utils, log)
     return self
 end
 

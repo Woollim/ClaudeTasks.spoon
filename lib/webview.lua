@@ -121,7 +121,7 @@ function M.resetForm()
 end
 
 -- Show task detail window
-function M.showTaskDetailWindow(subject, description, utils, log)
+function M.showTaskDetailWindow(subject, description, metadata, utils, log)
     -- Close existing detail window
     if detailWebview then
         detailWebview:delete()
@@ -141,6 +141,13 @@ function M.showTaskDetailWindow(subject, description, utils, log)
         height
     )
 
+    -- Generate metadata JSON
+    local metadataJson = "{}"
+    if metadata and type(metadata) == "table" then
+        local ok, encoded = pcall(hs.json.encode, metadata)
+        if ok then metadataJson = encoded end
+    end
+
     local html = [[
 <!DOCTYPE html>
 <html>
@@ -157,11 +164,15 @@ function M.showTaskDetailWindow(subject, description, utils, log)
             color: #e5e5e5;
             padding: 20px;
             -webkit-font-smoothing: antialiased;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
         .header {
             margin-bottom: 16px;
             padding-bottom: 12px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
         }
         .title {
             font-size: 18px;
@@ -170,7 +181,7 @@ function M.showTaskDetailWindow(subject, description, utils, log)
         }
         .content {
             overflow-y: auto;
-            max-height: calc(100vh - 80px);
+            flex: 1;
         }
         .content h1, .content h2, .content h3 { color: #fff; margin: 16px 0 8px 0; }
         .content h1 { font-size: 1.5em; }
@@ -211,6 +222,35 @@ function M.showTaskDetailWindow(subject, description, utils, log)
             text-align: left;
         }
         .content th { background: rgba(255, 255, 255, 0.05); }
+        .metadata {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+        .metadata-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .metadata-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .metadata-tag {
+            font-size: 11px;
+            background: rgba(168, 85, 247, 0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: #c084fc;
+        }
+        .metadata-tag .tag-key {
+            opacity: 0.7;
+        }
     </style>
 </head>
 <body>
@@ -218,6 +258,10 @@ function M.showTaskDetailWindow(subject, description, utils, log)
         <div class="title">]] .. utils.escapeHtml(subject or "Task Detail") .. [[</div>
     </div>
     <div class="content" id="content"></div>
+    <div class="metadata" id="metadata" style="display: none;">
+        <div class="metadata-title">Metadata</div>
+        <div class="metadata-tags" id="metadataTags"></div>
+    </div>
     <script>
         function closeWindow() {
             window.webkit.messageHandlers.detailBridge.postMessage({ action: 'close' });
@@ -230,6 +274,22 @@ function M.showTaskDetailWindow(subject, description, utils, log)
         });
         var description = ]] .. utils.jsonEncodeString(description or "") .. [[;
         document.getElementById('content').innerHTML = marked.parse(description);
+
+        var metadata = ]] .. metadataJson .. [[;
+        var metadataEl = document.getElementById('metadata');
+        var tagsEl = document.getElementById('metadataTags');
+        var keys = Object.keys(metadata);
+        if (keys.length > 0) {
+            metadataEl.style.display = 'block';
+            keys.forEach(function(key) {
+                var value = metadata[key];
+                var displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                var tag = document.createElement('span');
+                tag.className = 'metadata-tag';
+                tag.innerHTML = '<span class="tag-key">' + key + ':</span> ' + displayValue;
+                tagsEl.appendChild(tag);
+            });
+        }
     </script>
 </body>
 </html>

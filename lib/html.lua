@@ -613,11 +613,12 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             });
         }
 
-        function showTaskDetail(subject, description) {
+        function showTaskDetail(subject, description, metadata) {
             window.webkit.messageHandlers.taskBridge.postMessage({
                 action: 'showTaskDetail',
                 subject: subject,
-                description: description
+                description: description,
+                metadata: metadata || {}
             });
         }
 
@@ -899,10 +900,11 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             end
             local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
             local descriptionHtml = ''
+            local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
                 local jsonSubj = utils.jsonEncodeString(task.subject)
-                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ", " .. jsonMeta .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
             end
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
@@ -938,10 +940,11 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             end
             local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
             local descriptionHtml = ''
+            local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
                 local jsonSubj = utils.jsonEncodeString(task.subject)
-                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ", " .. jsonMeta .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
             end
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
@@ -975,10 +978,11 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             local task = completedTasks[i]
             local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
             local descriptionHtml = ''
+            local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
                 local jsonSubj = utils.jsonEncodeString(task.subject)
-                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ", " .. jsonMeta .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
             end
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
