@@ -276,6 +276,10 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         .task:hover {
             background: rgba(255, 255, 255, 0.08);
         }
+        .task.focused {
+            outline: 2px solid #3b82f6;
+            outline-offset: -2px;
+        }
         .task-icon {
             font-size: 14px;
             margin-top: 1px;
@@ -379,10 +383,81 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         .task-launch-btn:hover {
             background: #16a34a;
         }
+        /* Search/Session toggle */
+        .input-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .input-container {
+            flex: 1;
+            position: relative;
+        }
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #888;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #e5e5e5;
+        }
+        .toggle-btn.active {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+        .search-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: #e5e5e5;
+            padding: 6px 10px;
+            padding-left: 28px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 100%;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        .search-input::placeholder {
+            color: #666;
+        }
+        .search-icon {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #60a5fa;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .no-results {
+            color: #666;
+            font-style: italic;
+            padding: 12px;
+            text-align: center;
+        }
     </style>
     <script>
         let isCreating = false;
         let formCollapsed = true;
+        let focusedIndex = -1;
+        let searchMode = false;
+        let searchDebounceTimer = null;
 
         function toggleForm() {
             formCollapsed = !formCollapsed;
@@ -462,10 +537,152 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             });
         }
 
+        // vim-like navigation
+        function getVisibleTasks() {
+            return Array.from(document.querySelectorAll('.task:not(.hidden)'));
+        }
+
+        function updateFocus(newIndex) {
+            const tasks = getVisibleTasks();
+            if (tasks.length === 0) return;
+
+            // Clamp index
+            newIndex = Math.max(0, Math.min(newIndex, tasks.length - 1));
+
+            // Remove previous focus
+            tasks.forEach(t => t.classList.remove('focused'));
+
+            // Add focus to new task
+            focusedIndex = newIndex;
+            const focusedTask = tasks[focusedIndex];
+            focusedTask.classList.add('focused');
+
+            // Scroll into view
+            focusedTask.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function openFocusedTask() {
+            const tasks = getVisibleTasks();
+            if (focusedIndex >= 0 && focusedIndex < tasks.length) {
+                const task = tasks[focusedIndex];
+                const descEl = task.querySelector('.task-description');
+                if (descEl) {
+                    descEl.click();
+                }
+            }
+        }
+
+        function launchFocusedTask() {
+            const tasks = getVisibleTasks();
+            if (focusedIndex >= 0 && focusedIndex < tasks.length) {
+                const task = tasks[focusedIndex];
+                const launchBtn = task.querySelector('.task-launch-btn');
+                if (launchBtn) {
+                    launchBtn.click();
+                }
+            }
+        }
+
+        // Search/Session toggle
+        function toggleSearchMode() {
+            searchMode = !searchMode;
+            const sessionContainer = document.getElementById('sessionContainer');
+            const searchContainer = document.getElementById('searchContainer');
+            const toggleBtn = document.getElementById('toggleBtn');
+
+            if (searchMode) {
+                sessionContainer.classList.add('hidden');
+                searchContainer.classList.remove('hidden');
+                toggleBtn.classList.add('active');
+                toggleBtn.innerHTML = '⎋';
+                toggleBtn.title = 'Back to session (/)';
+                document.getElementById('searchInput').focus();
+            } else {
+                sessionContainer.classList.remove('hidden');
+                searchContainer.classList.add('hidden');
+                toggleBtn.classList.remove('active');
+                toggleBtn.innerHTML = '⌕';
+                toggleBtn.title = 'Search tasks (/)';
+                clearSearch();
+            }
+        }
+
+        function clearSearch() {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                filterTasks('');
+            }
+        }
+
+        function filterTasks(query) {
+            const tasks = document.querySelectorAll('.task');
+            const normalizedQuery = query.toLowerCase().trim();
+            let visibleCount = 0;
+
+            tasks.forEach(task => {
+                if (!normalizedQuery) {
+                    task.classList.remove('hidden');
+                    visibleCount++;
+                    return;
+                }
+
+                const subject = task.querySelector('.task-subject')?.textContent?.toLowerCase() || '';
+                const description = task.querySelector('.task-description')?.textContent?.toLowerCase() || '';
+
+                if (subject.includes(normalizedQuery) || description.includes(normalizedQuery)) {
+                    task.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    task.classList.add('hidden');
+                }
+            });
+
+            // Show/hide no results message
+            let noResultsEl = document.getElementById('noResults');
+            if (normalizedQuery && visibleCount === 0) {
+                if (!noResultsEl) {
+                    noResultsEl = document.createElement('div');
+                    noResultsEl.id = 'noResults';
+                    noResultsEl.className = 'no-results';
+                    noResultsEl.textContent = 'No matching tasks';
+                    document.body.appendChild(noResultsEl);
+                }
+                noResultsEl.classList.remove('hidden');
+            } else if (noResultsEl) {
+                noResultsEl.classList.add('hidden');
+            }
+
+            // Reset focus index
+            focusedIndex = -1;
+            tasks.forEach(t => t.classList.remove('focused'));
+        }
+
+        function onSearchInput(input) {
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+            }
+            searchDebounceTimer = setTimeout(() => {
+                filterTasks(input.value);
+            }, 200);
+        }
+
+        // Auto-focus first task on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const tasks = getVisibleTasks();
+            if (tasks.length > 0) {
+                updateFocus(0);
+            }
+        });
+
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
+            const activeEl = document.activeElement;
+            const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 createTask();
+                return;
             }
             if (e.key === 'e' && e.metaKey) {
                 e.preventDefault();
@@ -475,9 +692,60 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 } else {
                     document.getElementById('sessionInput').focus();
                 }
+                return;
             }
-            if (e.key === 'Escape') {
-                if (!formCollapsed) toggleForm();
+            if (e.key === 'Escape' || (e.key === '[' && e.ctrlKey)) {
+                e.preventDefault();
+                // Exit search mode if active
+                if (searchMode) {
+                    toggleSearchMode();
+                }
+                // Collapse form if open
+                if (!formCollapsed) {
+                    toggleForm();
+                }
+                // Blur any focused input to enable j/k navigation
+                if (document.activeElement) {
+                    document.activeElement.blur();
+                }
+                return;
+            }
+
+            // vim-like navigation (only when not in input)
+            // Korean mappings: j→ㅓ, k→ㅏ, /→ㅋ
+            if (!isInputFocused) {
+                if (e.key === 'j' || e.key === 'ㅓ') {
+                    e.preventDefault();
+                    updateFocus(focusedIndex + 1);
+                    return;
+                }
+                if (e.key === 'k' || e.key === 'ㅏ') {
+                    e.preventDefault();
+                    updateFocus(focusedIndex - 1);
+                    return;
+                }
+                if (e.key === ' ') {
+                    e.preventDefault();
+                    openFocusedTask();
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    launchFocusedTask();
+                    return;
+                }
+                if (e.key === '/') {
+                    e.preventDefault();
+                    if (!searchMode) toggleSearchMode();
+                    document.getElementById('searchInput').focus();
+                    return;
+                }
+                if (e.key === '=') {
+                    e.preventDefault();
+                    if (searchMode) toggleSearchMode();
+                    document.getElementById('sessionInput').focus();
+                    return;
+                }
             }
         });
     </script>
@@ -492,14 +760,26 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 <span class="count">]] .. #tasks .. [[ tasks</span>
             </div>
         </div>
-        <input type="text" class="session-input" id="sessionInput" list="sessionList"
-               value="]] .. utils.escapeHtml(currentSessionValue) .. [["
-               placeholder="Enter or select session..."
-               onchange="onSessionInputChange(this)"
-               onkeydown="if(event.key==='Enter'){onSessionInputChange(this);event.preventDefault();}">
-        <datalist id="sessionList">
-            ]] .. sessionOptions .. [[
-        </datalist>
+        <div class="input-row">
+            <div class="input-container" id="sessionContainer">
+                <input type="text" class="session-input" id="sessionInput" list="sessionList"
+                       value="]] .. utils.escapeHtml(currentSessionValue) .. [["
+                       placeholder="Enter or select session..."
+                       onchange="onSessionInputChange(this)"
+                       onkeydown="if(event.key==='Enter'){onSessionInputChange(this);event.preventDefault();}">
+                <datalist id="sessionList">
+                    ]] .. sessionOptions .. [[
+                </datalist>
+            </div>
+            <div class="input-container hidden" id="searchContainer">
+                <span class="search-icon">⌕</span>
+                <input type="text" class="search-input" id="searchInput"
+                       placeholder="Search tasks..."
+                       oninput="onSearchInput(this)"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();}">
+            </div>
+            <button id="toggleBtn" class="toggle-btn" onclick="toggleSearchMode()" title="Search tasks (/)">⌕</button>
+        </div>
     </div>
 ]]
 

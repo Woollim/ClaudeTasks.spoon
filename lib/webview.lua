@@ -79,10 +79,10 @@ function M.show(log)
         webview:bringToFront()
         isVisible = true
 
-        -- Focus session input after DOM ready
+        -- Focus first task after DOM ready
         hs.timer.doAfter(0.1, function()
             if webview then
-                webview:evaluateJavaScript("document.getElementById('sessionInput').focus(); document.getElementById('sessionInput').select();")
+                webview:evaluateJavaScript("updateFocus(0);")
             end
         end)
 
@@ -215,8 +215,14 @@ function M.showTaskDetailWindow(subject, description, utils, log)
     </div>
     <div class="content" id="content"></div>
     <script>
+        function closeWindow() {
+            window.webkit.messageHandlers.detailBridge.postMessage({ action: 'close' });
+        }
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') window.close();
+            if (e.key === 'Escape' || e.key === ' ') {
+                e.preventDefault();
+                closeWindow();
+            }
         });
         var description = ]] .. utils.jsonEncodeString(description or "") .. [[;
         document.getElementById('content').innerHTML = marked.parse(description);
@@ -225,7 +231,19 @@ function M.showTaskDetailWindow(subject, description, utils, log)
 </html>
 ]]
 
-    detailWebview = hs.webview.new(rect)
+    -- Create usercontent for keyboard callback
+    local detailusercontent = hs.webview.usercontent.new("detailBridge")
+    detailusercontent:setCallback(function(msg)
+        if msg.body and msg.body.action == "close" then
+            if detailWebview then
+                detailWebview:delete()
+                detailWebview = nil
+                log("Task detail window closed via keyboard")
+            end
+        end
+    end)
+
+    detailWebview = hs.webview.new(rect, { developerExtrasEnabled = false }, detailusercontent)
     detailWebview:windowStyle({"titled", "closable", "resizable"})
     detailWebview:level(hs.drawing.windowLevels.floating)
     detailWebview:allowTextEntry(true)
