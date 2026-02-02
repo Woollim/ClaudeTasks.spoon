@@ -119,12 +119,25 @@ claude -p --model haiku --no-session-persistence --disable-slash-commands \
 ## Keyboard Shortcuts
 
 WebView embedded shortcuts (in `html.lua`):
+
+**Navigation (vim-like, Korean keyboard mappings supported)**:
+- `j` - Next task
+- `k` - Previous task
+- `Space` - View task detail
+- `Enter` - Launch Claude session for focused task
+
+**Mode switching (global, works even in input fields)**:
+- `/` - Search mode (filter tasks by subject/description)
+- `=` - Session input mode
+- `Escape` / `Ctrl+[` - Return to navigation mode
+
+**Other**:
 - `Cmd+Enter` - Create task from input
 - `Cmd+E` - Open Quick Task dialog
-- `Escape` - Collapse form / close dialog
+- `?` - Toggle keyboard shortcuts help popup
 
 Default Hammerspoon hotkeys (configurable via `bindHotkeys`):
-- `Opt+.` - Toggle task viewer
+- `Opt+.` - Toggle task viewer (focuses window for keyboard input)
 - `Cmd+Alt+T` - Show status summary
 
 ## Dependencies
