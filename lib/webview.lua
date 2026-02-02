@@ -79,6 +79,10 @@ function M.show(log)
         webview:bringToFront()
         isVisible = true
 
+        -- Focus the window to receive keyboard input
+        local win = webview:hswindow()
+        if win then win:focus() end
+
         -- Focus first task after DOM ready
         hs.timer.doAfter(0.1, function()
             if webview then

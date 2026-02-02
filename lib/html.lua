@@ -678,8 +678,8 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 sessionContainer.classList.add('hidden');
                 searchContainer.classList.remove('hidden');
                 toggleBtn.classList.add('active');
-                toggleBtn.innerHTML = '⎋';
-                toggleBtn.title = 'Back to session (/)';
+                toggleBtn.innerHTML = '⊟';
+                toggleBtn.title = 'Session input (=)';
                 document.getElementById('searchInput').focus();
             } else {
                 sessionContainer.classList.remove('hidden');
@@ -812,8 +812,22 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 return;
             }
 
+            // Mode switching (global)
+            if (e.key === '/') {
+                e.preventDefault();
+                if (!searchMode) toggleSearchMode();
+                document.getElementById('searchInput').focus();
+                return;
+            }
+            if (e.key === '=') {
+                e.preventDefault();
+                if (searchMode) toggleSearchMode();
+                document.getElementById('sessionInput').focus();
+                return;
+            }
+
             // vim-like navigation (only when not in input)
-            // Korean mappings: j→ㅓ, k→ㅏ, /→ㅋ
+            // Korean mappings: j→ㅓ, k→ㅏ
             if (!isInputFocused) {
                 if (e.key === 'j' || e.key === 'ㅓ') {
                     e.preventDefault();
@@ -833,18 +847,6 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     launchFocusedTask();
-                    return;
-                }
-                if (e.key === '/') {
-                    e.preventDefault();
-                    if (!searchMode) toggleSearchMode();
-                    document.getElementById('searchInput').focus();
-                    return;
-                }
-                if (e.key === '=') {
-                    e.preventDefault();
-                    if (searchMode) toggleSearchMode();
-                    document.getElementById('sessionInput').focus();
                     return;
                 }
             }
