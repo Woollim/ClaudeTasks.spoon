@@ -451,6 +451,89 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             padding: 12px;
             text-align: center;
         }
+        /* Help popup */
+        .help-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #888;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .help-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #e5e5e5;
+        }
+        .help-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(40, 40, 40, 0.98);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 16px 20px;
+            z-index: 1000;
+            min-width: 280px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .help-popup.hidden {
+            display: none;
+        }
+        .help-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+        .help-overlay.hidden {
+            display: none;
+        }
+        .help-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .help-section {
+            margin-bottom: 12px;
+        }
+        .help-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .help-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .help-key {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: "SF Mono", Menlo, monospace;
+            font-size: 11px;
+            color: #60a5fa;
+        }
+        .help-desc {
+            font-size: 12px;
+            color: #ccc;
+        }
     </style>
     <script>
         let isCreating = false;
@@ -458,6 +541,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         let focusedIndex = -1;
         let searchMode = false;
         let searchDebounceTimer = null;
+        let helpVisible = false;
 
         function toggleForm() {
             formCollapsed = !formCollapsed;
@@ -667,6 +751,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             }, 200);
         }
 
+        // Help popup
+        function toggleHelp() {
+            helpVisible = !helpVisible;
+            document.getElementById('helpOverlay').classList.toggle('hidden', !helpVisible);
+            document.getElementById('helpPopup').classList.toggle('hidden', !helpVisible);
+        }
+
         // Auto-focus first task on load
         document.addEventListener('DOMContentLoaded', function() {
             const tasks = getVisibleTasks();
@@ -694,8 +785,18 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 }
                 return;
             }
+            if (e.key === '?') {
+                e.preventDefault();
+                toggleHelp();
+                return;
+            }
             if (e.key === 'Escape' || (e.key === '[' && e.ctrlKey)) {
                 e.preventDefault();
+                // Close help if open
+                if (helpVisible) {
+                    toggleHelp();
+                    return;
+                }
                 // Exit search mode if active
                 if (searchMode) {
                     toggleSearchMode();
@@ -755,9 +856,8 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         <div class="header-row">
             <span class="title">Claude Tasks</span>
             <div class="header-actions">
-                <button id="quickUpdateBtn" class="launch-btn quick-update-btn" onclick="showQuickUpdateDialog()" title="Quick Task ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
-                <button id="launchBtn" class="launch-btn" onclick="launchClaude()" title="Launch Claude session"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>▶</button>
                 <span class="count">]] .. #tasks .. [[ tasks</span>
+                <button class="help-btn" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
             </div>
         </div>
         <div class="input-row">
@@ -766,7 +866,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                        value="]] .. utils.escapeHtml(currentSessionValue) .. [["
                        placeholder="Enter or select session..."
                        onchange="onSessionInputChange(this)"
-                       onkeydown="if(event.key==='Enter'){onSessionInputChange(this);event.preventDefault();}">
+                       onkeydown="if(event.key==='Enter'){onSessionInputChange(this);this.blur();event.preventDefault();}">
                 <datalist id="sessionList">
                     ]] .. sessionOptions .. [[
                 </datalist>
@@ -776,9 +876,10 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 <input type="text" class="search-input" id="searchInput"
                        placeholder="Search tasks..."
                        oninput="onSearchInput(this)"
-                       onkeydown="if(event.key==='Enter'){event.preventDefault();}">
+                       onkeydown="if(event.key==='Enter'){this.blur();event.preventDefault();}">
             </div>
             <button id="toggleBtn" class="toggle-btn" onclick="toggleSearchMode()" title="Search tasks (/)">⌕</button>
+            <button id="quickUpdateBtn" class="toggle-btn" onclick="showQuickUpdateDialog()" title="Quick Task ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
         </div>
     </div>
 ]]
@@ -794,7 +895,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
             local descriptionHtml = ''
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
@@ -833,7 +934,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
             local descriptionHtml = ''
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
@@ -870,7 +971,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
 ]]
         for i = 1, displayCount do
             local task = completedTasks[i]
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaude()" title="Launch Claude session">▶</button>'
             local descriptionHtml = ''
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
@@ -915,6 +1016,29 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
     end
 
     html = html .. [[
+    <div id="helpOverlay" class="help-overlay hidden" onclick="toggleHelp()"></div>
+    <div id="helpPopup" class="help-popup hidden">
+        <div class="help-title">Keyboard Shortcuts</div>
+        <div class="help-section">
+            <div class="help-section-title">Navigation</div>
+            <div class="help-row"><span class="help-key">j / ㅓ</span><span class="help-desc">Next task</span></div>
+            <div class="help-row"><span class="help-key">k / ㅏ</span><span class="help-desc">Previous task</span></div>
+            <div class="help-row"><span class="help-key">Space</span><span class="help-desc">View detail</span></div>
+            <div class="help-row"><span class="help-key">Enter</span><span class="help-desc">Launch Claude</span></div>
+        </div>
+        <div class="help-section">
+            <div class="help-section-title">Mode</div>
+            <div class="help-row"><span class="help-key">/</span><span class="help-desc">Search mode</span></div>
+            <div class="help-row"><span class="help-key">=</span><span class="help-desc">Session input</span></div>
+            <div class="help-row"><span class="help-key">Esc / ^[</span><span class="help-desc">Back to navigation</span></div>
+        </div>
+        <div class="help-section">
+            <div class="help-section-title">Other</div>
+            <div class="help-row"><span class="help-key">⌘E</span><span class="help-desc">Quick Task</span></div>
+            <div class="help-row"><span class="help-key">⌘Enter</span><span class="help-desc">Create task</span></div>
+            <div class="help-row"><span class="help-key">?</span><span class="help-desc">Toggle this help</span></div>
+        </div>
+    </div>
 </body>
 </html>
 ]]
