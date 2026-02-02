@@ -539,9 +539,45 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         let isCreating = false;
         let formCollapsed = true;
         let focusedIndex = -1;
-        let searchMode = false;
+        let currentMode = 'session'; // 'session' | 'search'
         let searchDebounceTimer = null;
         let helpVisible = false;
+
+        // Release focus to navigation mode
+        function releaseToNavigation() {
+            if (document.activeElement) {
+                document.activeElement.blur();
+            }
+            document.querySelectorAll('.task').forEach(t => t.classList.remove('focused'));
+            focusedIndex = -1;
+        }
+
+        // Set input mode
+        function setMode(mode) {
+            currentMode = mode;
+            const sessionContainer = document.getElementById('sessionContainer');
+            const searchContainer = document.getElementById('searchContainer');
+            const toggleBtn = document.getElementById('toggleBtn');
+
+            releaseToNavigation();
+
+            if (mode === 'search') {
+                sessionContainer.classList.add('hidden');
+                searchContainer.classList.remove('hidden');
+                toggleBtn.classList.add('active');
+                toggleBtn.innerHTML = '⊟';
+                toggleBtn.title = 'Session input (=)';
+                document.getElementById('searchInput').focus();
+            } else {
+                sessionContainer.classList.remove('hidden');
+                searchContainer.classList.add('hidden');
+                toggleBtn.classList.remove('active');
+                toggleBtn.innerHTML = '⌕';
+                toggleBtn.title = 'Search tasks (/)';
+                clearSearch();
+                document.getElementById('sessionInput').focus();
+            }
+        }
 
         function toggleForm() {
             formCollapsed = !formCollapsed;
@@ -668,28 +704,9 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             }
         }
 
-        // Search/Session toggle
-        function toggleSearchMode() {
-            searchMode = !searchMode;
-            const sessionContainer = document.getElementById('sessionContainer');
-            const searchContainer = document.getElementById('searchContainer');
-            const toggleBtn = document.getElementById('toggleBtn');
-
-            if (searchMode) {
-                sessionContainer.classList.add('hidden');
-                searchContainer.classList.remove('hidden');
-                toggleBtn.classList.add('active');
-                toggleBtn.innerHTML = '⊟';
-                toggleBtn.title = 'Session input (=)';
-                document.getElementById('searchInput').focus();
-            } else {
-                sessionContainer.classList.remove('hidden');
-                searchContainer.classList.add('hidden');
-                toggleBtn.classList.remove('active');
-                toggleBtn.innerHTML = '⌕';
-                toggleBtn.title = 'Search tasks (/)';
-                clearSearch();
-            }
+        // Toggle between modes (for button click)
+        function toggleMode() {
+            setMode(currentMode === 'search' ? 'session' : 'search');
         }
 
         function clearSearch() {
@@ -738,9 +755,6 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 noResultsEl.classList.add('hidden');
             }
 
-            // Reset focus index
-            focusedIndex = -1;
-            tasks.forEach(t => t.classList.remove('focused'));
         }
 
         function onSearchInput(input) {
@@ -799,31 +813,28 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                     return;
                 }
                 // Exit search mode if active
-                if (searchMode) {
-                    toggleSearchMode();
+                if (currentMode === 'search') {
+                    setMode('session');
+                    return;
                 }
                 // Collapse form if open
                 if (!formCollapsed) {
                     toggleForm();
                 }
-                // Blur any focused input to enable j/k navigation
-                if (document.activeElement) {
-                    document.activeElement.blur();
-                }
+                // Release to navigation
+                releaseToNavigation();
                 return;
             }
 
             // Mode switching (global)
             if (e.key === '/') {
                 e.preventDefault();
-                if (!searchMode) toggleSearchMode();
-                document.getElementById('searchInput').focus();
+                setMode('search');
                 return;
             }
             if (e.key === '=') {
                 e.preventDefault();
-                if (searchMode) toggleSearchMode();
-                document.getElementById('sessionInput').focus();
+                setMode('session');
                 return;
             }
 
@@ -869,7 +880,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                        value="]] .. utils.escapeHtml(currentSessionValue) .. [["
                        placeholder="Enter or select session..."
                        onchange="onSessionInputChange(this)"
-                       onkeydown="if(event.key==='Enter'){onSessionInputChange(this);this.blur();event.preventDefault();}">
+                       onkeydown="if(event.key==='Enter'){onSessionInputChange(this);releaseToNavigation();event.preventDefault();}">
                 <datalist id="sessionList">
                     ]] .. sessionOptions .. [[
                 </datalist>
@@ -879,9 +890,9 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 <input type="text" class="search-input" id="searchInput"
                        placeholder="Search tasks..."
                        oninput="onSearchInput(this)"
-                       onkeydown="if(event.key==='Enter'){this.blur();event.preventDefault();}">
+                       onkeydown="if(event.key==='Enter'){releaseToNavigation();event.preventDefault();}">
             </div>
-            <button id="toggleBtn" class="toggle-btn" onclick="toggleSearchMode()" title="Search tasks (/)">⌕</button>
+            <button id="toggleBtn" class="toggle-btn" onclick="toggleMode()" title="Search tasks (/)">⌕</button>
             <button id="quickUpdateBtn" class="toggle-btn" onclick="showQuickUpdateDialog()" title="Quick Task ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
         </div>
     </div>
