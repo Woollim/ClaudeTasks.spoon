@@ -276,6 +276,10 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         .task:hover {
             background: rgba(255, 255, 255, 0.08);
         }
+        .task.focused {
+            outline: 2px solid #3b82f6;
+            outline-offset: -2px;
+        }
         .task-icon {
             font-size: 14px;
             margin-top: 1px;
@@ -379,10 +383,201 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         .task-launch-btn:hover {
             background: #16a34a;
         }
+        /* Search/Session toggle */
+        .input-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .input-container {
+            flex: 1;
+            position: relative;
+        }
+        .toggle-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #888;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #e5e5e5;
+        }
+        .toggle-btn.active {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+        .search-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: #e5e5e5;
+            padding: 6px 10px;
+            padding-left: 28px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 100%;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        .search-input::placeholder {
+            color: #666;
+        }
+        .search-icon {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #60a5fa;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .hidden {
+            display: none !important;
+        }
+        .no-results {
+            color: #666;
+            font-style: italic;
+            padding: 12px;
+            text-align: center;
+        }
+        /* Help popup */
+        .help-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #888;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .help-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #e5e5e5;
+        }
+        .help-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(40, 40, 40, 0.98);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 16px 20px;
+            z-index: 1000;
+            min-width: 280px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+        .help-popup.hidden {
+            display: none;
+        }
+        .help-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+        .help-overlay.hidden {
+            display: none;
+        }
+        .help-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .help-section {
+            margin-bottom: 12px;
+        }
+        .help-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .help-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .help-key {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: "SF Mono", Menlo, monospace;
+            font-size: 11px;
+            color: #60a5fa;
+        }
+        .help-desc {
+            font-size: 12px;
+            color: #ccc;
+        }
     </style>
     <script>
         let isCreating = false;
         let formCollapsed = true;
+        let focusedIndex = -1;
+        let currentMode = 'session'; // 'session' | 'search'
+        let searchDebounceTimer = null;
+        let helpVisible = false;
+
+        // Release focus to navigation mode
+        function releaseToNavigation() {
+            if (document.activeElement) {
+                document.activeElement.blur();
+            }
+            document.querySelectorAll('.task').forEach(t => t.classList.remove('focused'));
+            focusedIndex = -1;
+        }
+
+        // Set input mode
+        function setMode(mode) {
+            currentMode = mode;
+            const sessionContainer = document.getElementById('sessionContainer');
+            const searchContainer = document.getElementById('searchContainer');
+            const toggleBtn = document.getElementById('toggleBtn');
+
+            releaseToNavigation();
+
+            if (mode === 'search') {
+                sessionContainer.classList.add('hidden');
+                searchContainer.classList.remove('hidden');
+                toggleBtn.classList.add('active');
+                toggleBtn.innerHTML = '⊟';
+                toggleBtn.title = 'Session input (=)';
+                document.getElementById('searchInput').focus();
+            } else {
+                sessionContainer.classList.remove('hidden');
+                searchContainer.classList.add('hidden');
+                toggleBtn.classList.remove('active');
+                toggleBtn.innerHTML = '⌕';
+                toggleBtn.title = 'Search tasks (/)';
+                clearSearch();
+                document.getElementById('sessionInput').focus();
+            }
+        }
 
         function toggleForm() {
             formCollapsed = !formCollapsed;
@@ -440,6 +635,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             });
         }
 
+        function launchClaudeWithSession(sessionId) {
+            window.webkit.messageHandlers.taskBridge.postMessage({
+                action: 'launchClaudeWithSession',
+                sessionId: sessionId
+            });
+        }
+
         function showQuickUpdateDialog() {
             window.webkit.messageHandlers.taskBridge.postMessage({
                 action: 'showQuickUpdateDialog'
@@ -454,18 +656,146 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             });
         }
 
-        function showTaskDetail(subject, description) {
+        function showTaskDetail(subject, description, metadata) {
             window.webkit.messageHandlers.taskBridge.postMessage({
                 action: 'showTaskDetail',
                 subject: subject,
-                description: description
+                description: description,
+                metadata: metadata || {}
             });
         }
 
+        // vim-like navigation
+        function getVisibleTasks() {
+            return Array.from(document.querySelectorAll('.task:not(.hidden)'));
+        }
+
+        function updateFocus(newIndex) {
+            const tasks = getVisibleTasks();
+            if (tasks.length === 0) return;
+
+            // Clamp index
+            newIndex = Math.max(0, Math.min(newIndex, tasks.length - 1));
+
+            // Remove previous focus
+            tasks.forEach(t => t.classList.remove('focused'));
+
+            // Add focus to new task
+            focusedIndex = newIndex;
+            const focusedTask = tasks[focusedIndex];
+            focusedTask.classList.add('focused');
+
+            // Scroll into view
+            focusedTask.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function openFocusedTask() {
+            const tasks = getVisibleTasks();
+            if (focusedIndex >= 0 && focusedIndex < tasks.length) {
+                const task = tasks[focusedIndex];
+                const descEl = task.querySelector('.task-description');
+                if (descEl) {
+                    descEl.click();
+                }
+            }
+        }
+
+        function launchFocusedTask() {
+            const tasks = getVisibleTasks();
+            if (focusedIndex >= 0 && focusedIndex < tasks.length) {
+                const task = tasks[focusedIndex];
+                const launchBtn = task.querySelector('.task-launch-btn');
+                if (launchBtn) {
+                    launchBtn.click();
+                }
+            }
+        }
+
+        // Toggle between modes (for button click)
+        function toggleMode() {
+            setMode(currentMode === 'search' ? 'session' : 'search');
+        }
+
+        function clearSearch() {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                filterTasks('');
+            }
+        }
+
+        function filterTasks(query) {
+            const tasks = document.querySelectorAll('.task');
+            const normalizedQuery = query.toLowerCase().trim();
+            let visibleCount = 0;
+
+            tasks.forEach(task => {
+                if (!normalizedQuery) {
+                    task.classList.remove('hidden');
+                    visibleCount++;
+                    return;
+                }
+
+                const subject = task.querySelector('.task-subject')?.textContent?.toLowerCase() || '';
+                const description = task.querySelector('.task-description')?.textContent?.toLowerCase() || '';
+
+                if (subject.includes(normalizedQuery) || description.includes(normalizedQuery)) {
+                    task.classList.remove('hidden');
+                    visibleCount++;
+                } else {
+                    task.classList.add('hidden');
+                }
+            });
+
+            // Show/hide no results message
+            let noResultsEl = document.getElementById('noResults');
+            if (normalizedQuery && visibleCount === 0) {
+                if (!noResultsEl) {
+                    noResultsEl = document.createElement('div');
+                    noResultsEl.id = 'noResults';
+                    noResultsEl.className = 'no-results';
+                    noResultsEl.textContent = 'No matching tasks';
+                    document.body.appendChild(noResultsEl);
+                }
+                noResultsEl.classList.remove('hidden');
+            } else if (noResultsEl) {
+                noResultsEl.classList.add('hidden');
+            }
+
+        }
+
+        function onSearchInput(input) {
+            if (searchDebounceTimer) {
+                clearTimeout(searchDebounceTimer);
+            }
+            searchDebounceTimer = setTimeout(() => {
+                filterTasks(input.value);
+            }, 200);
+        }
+
+        // Help popup
+        function toggleHelp() {
+            helpVisible = !helpVisible;
+            document.getElementById('helpOverlay').classList.toggle('hidden', !helpVisible);
+            document.getElementById('helpPopup').classList.toggle('hidden', !helpVisible);
+        }
+
+        // Auto-focus first task on load
+        document.addEventListener('DOMContentLoaded', function() {
+            const tasks = getVisibleTasks();
+            if (tasks.length > 0) {
+                updateFocus(0);
+            }
+        });
+
         // Keyboard shortcuts
         document.addEventListener('keydown', function(e) {
+            const activeEl = document.activeElement;
+            const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 createTask();
+                return;
             }
             if (e.key === 'e' && e.metaKey) {
                 e.preventDefault();
@@ -475,9 +805,69 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                 } else {
                     document.getElementById('sessionInput').focus();
                 }
+                return;
             }
-            if (e.key === 'Escape') {
-                if (!formCollapsed) toggleForm();
+            if (e.key === '?') {
+                e.preventDefault();
+                toggleHelp();
+                return;
+            }
+            if (e.key === 'Escape' || (e.key === '[' && e.ctrlKey)) {
+                e.preventDefault();
+                // Close help if open
+                if (helpVisible) {
+                    toggleHelp();
+                    return;
+                }
+                // Exit search mode if active
+                if (currentMode === 'search') {
+                    setMode('session');
+                    return;
+                }
+                // Collapse form if open
+                if (!formCollapsed) {
+                    toggleForm();
+                }
+                // Release to navigation
+                releaseToNavigation();
+                return;
+            }
+
+            // Mode switching (global)
+            if (e.key === '/') {
+                e.preventDefault();
+                setMode('search');
+                return;
+            }
+            if (e.key === '=') {
+                e.preventDefault();
+                setMode('session');
+                return;
+            }
+
+            // vim-like navigation (only when not in input)
+            // Korean mappings: j→ㅓ, k→ㅏ
+            if (!isInputFocused) {
+                if (e.key === 'j' || e.key === 'ㅓ') {
+                    e.preventDefault();
+                    updateFocus(focusedIndex + 1);
+                    return;
+                }
+                if (e.key === 'k' || e.key === 'ㅏ') {
+                    e.preventDefault();
+                    updateFocus(focusedIndex - 1);
+                    return;
+                }
+                if (e.key === ' ') {
+                    e.preventDefault();
+                    openFocusedTask();
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    launchFocusedTask();
+                    return;
+                }
             }
         });
     </script>
@@ -487,19 +877,31 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         <div class="header-row">
             <span class="title">Claude Tasks</span>
             <div class="header-actions">
-                <button id="quickUpdateBtn" class="launch-btn quick-update-btn" onclick="showQuickUpdateDialog()" title="Quick Task ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
-                <button id="launchBtn" class="launch-btn" onclick="launchClaude()" title="Launch Claude session"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>▶</button>
                 <span class="count">]] .. #tasks .. [[ tasks</span>
+                <button class="help-btn" onclick="toggleHelp()" title="Keyboard shortcuts (?)">?</button>
             </div>
         </div>
-        <input type="text" class="session-input" id="sessionInput" list="sessionList"
-               value="]] .. utils.escapeHtml(currentSessionValue) .. [["
-               placeholder="Enter or select session..."
-               onchange="onSessionInputChange(this)"
-               onkeydown="if(event.key==='Enter'){onSessionInputChange(this);event.preventDefault();}">
-        <datalist id="sessionList">
-            ]] .. sessionOptions .. [[
-        </datalist>
+        <div class="input-row">
+            <div class="input-container" id="sessionContainer">
+                <input type="text" class="session-input" id="sessionInput" list="sessionList"
+                       value="]] .. utils.escapeHtml(currentSessionValue) .. [["
+                       placeholder="Enter or select session..."
+                       onchange="onSessionInputChange(this)"
+                       onkeydown="if(event.key==='Enter'){onSessionInputChange(this);releaseToNavigation();event.preventDefault();}">
+                <datalist id="sessionList">
+                    ]] .. sessionOptions .. [[
+                </datalist>
+            </div>
+            <div class="input-container hidden" id="searchContainer">
+                <span class="search-icon">⌕</span>
+                <input type="text" class="search-input" id="searchInput"
+                       placeholder="Search tasks..."
+                       oninput="onSearchInput(this)"
+                       onkeydown="if(event.key==='Enter'){releaseToNavigation();event.preventDefault();}">
+            </div>
+            <button id="toggleBtn" class="toggle-btn" onclick="toggleMode()" title="Search tasks (/)">⌕</button>
+            <button id="quickUpdateBtn" class="toggle-btn" onclick="showQuickUpdateDialog()" title="Quick Task ⌘E"]] .. (currentSessionValue == '' and ' disabled' or '') .. [[>⚡</button>
+        </div>
     </div>
 ]]
 
@@ -514,12 +916,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
             local descriptionHtml = ''
+            local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
                 local jsonSubj = utils.jsonEncodeString(task.subject)
-                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ", " .. jsonMeta .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
             end
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
@@ -553,12 +956,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
             local descriptionHtml = ''
+            local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
                 local jsonSubj = utils.jsonEncodeString(task.subject)
-                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ", " .. jsonMeta .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
             end
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
@@ -590,12 +994,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
 ]]
         for i = 1, displayCount do
             local task = completedTasks[i]
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or ''
+            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
             local descriptionHtml = ''
+            local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
                 local jsonDesc = utils.jsonEncodeString(task.description)
                 local jsonSubj = utils.jsonEncodeString(task.subject)
-                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
+                descriptionHtml = "<div class='task-description' onclick='showTaskDetail(" .. jsonSubj .. ", " .. jsonDesc .. ", " .. jsonMeta .. ")' title='Click to view full description'>" .. utils.escapeHtml(task.description) .. "</div>"
             end
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
@@ -635,6 +1040,29 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
     end
 
     html = html .. [[
+    <div id="helpOverlay" class="help-overlay hidden" onclick="toggleHelp()"></div>
+    <div id="helpPopup" class="help-popup hidden">
+        <div class="help-title">Keyboard Shortcuts</div>
+        <div class="help-section">
+            <div class="help-section-title">Navigation</div>
+            <div class="help-row"><span class="help-key">j / ㅓ</span><span class="help-desc">Next task</span></div>
+            <div class="help-row"><span class="help-key">k / ㅏ</span><span class="help-desc">Previous task</span></div>
+            <div class="help-row"><span class="help-key">Space</span><span class="help-desc">View detail</span></div>
+            <div class="help-row"><span class="help-key">Enter</span><span class="help-desc">Launch Claude</span></div>
+        </div>
+        <div class="help-section">
+            <div class="help-section-title">Mode</div>
+            <div class="help-row"><span class="help-key">/</span><span class="help-desc">Search mode</span></div>
+            <div class="help-row"><span class="help-key">=</span><span class="help-desc">Session input</span></div>
+            <div class="help-row"><span class="help-key">Esc / ^[</span><span class="help-desc">Back to navigation</span></div>
+        </div>
+        <div class="help-section">
+            <div class="help-section-title">Other</div>
+            <div class="help-row"><span class="help-key">⌘E</span><span class="help-desc">Quick Task</span></div>
+            <div class="help-row"><span class="help-key">⌘Enter</span><span class="help-desc">Create task</span></div>
+            <div class="help-row"><span class="help-key">?</span><span class="help-desc">Toggle this help</span></div>
+        </div>
+    </div>
 </body>
 </html>
 ]]

@@ -6,10 +6,16 @@ local M = {}
 -- CWD cache (module-level)
 local cwdCache = {}
 
+-- Encode a path back to Claude's format for verification
+-- /Users/choi/.claude → -Users-choi--claude
+local function encodePath(path)
+    return path:gsub("/%.", "--"):gsub("/", "-")
+end
+
 -- Decode CWD path from encoded directory name
 -- Claude encodes paths: / → -, /. → --
--- Problem: hyphens in dir names (e.g. team-attention) are ambiguous.
--- Solution: walk the filesystem to resolve the correct path.
+-- Problem: hyphens in dir names (e.g. aqueduct-deploy) are ambiguous.
+-- Solution: walk the filesystem and verify by re-encoding.
 function M.decodeCwdPath(encodedDir)
     local parts = {}
     -- Split on '-' but first handle '--' (encoded /.)
@@ -33,26 +39,33 @@ function M.decodeCwdPath(encodedDir)
             table.insert(tokens, t)
         end
         if #tokens == 0 then return basePath end
-        -- Try greedily matching longest existing directory names
+        -- Try all combinations, verify each candidate exists
         local function tryResolve(idx, currentPath)
-            if idx > #tokens then return currentPath end
+            if idx > #tokens then
+                -- All tokens processed, verify final path exists
+                if hs.fs.attributes(currentPath, "mode") == "directory" then
+                    return currentPath
+                end
+                return nil
+            end
             local accumulated = tokens[idx]
             for j = idx, #tokens do
                 if j > idx then
                     accumulated = accumulated .. "-" .. tokens[j]
                 end
                 local candidate = currentPath .. "/" .. accumulated
-                if j == #tokens then
-                    -- Last possible combo, must use it
-                    return candidate
-                end
+                -- Always verify directory exists before proceeding
                 if hs.fs.attributes(candidate, "mode") == "directory" then
+                    if j == #tokens then
+                        -- Last token combo, already verified
+                        return candidate
+                    end
                     local result = tryResolve(j + 1, candidate)
                     if result then return result end
                 end
             end
-            -- Fallback: treat each token as a directory
-            return tryResolve(idx + 1, currentPath .. "/" .. tokens[idx])
+            -- All combinations failed
+            return nil
         end
         return tryResolve(1, basePath)
     end

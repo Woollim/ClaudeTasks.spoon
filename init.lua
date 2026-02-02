@@ -102,10 +102,12 @@ local function actionHandler(action, params)
         obj:launchClaudeWithTaskList()
     elseif action == "launchClaudeWithCwd" then
         obj:launchClaudeWithCwd(params.sessionId, params.cwd)
+    elseif action == "launchClaudeWithSession" then
+        obj:launchClaudeWithSession(params.sessionId)
     elseif action == "showQuickUpdateDialog" then
         obj:showQuickTaskDialog()
     elseif action == "showTaskDetail" then
-        obj:showTaskDetailWindow(params.subject, params.description)
+        obj:showTaskDetailWindow(params.subject, params.description, params.metadata)
     end
 end
 
@@ -292,8 +294,8 @@ For TaskCreate: If description is not explicitly provided, infer a meaningful de
     hs.alert.show("Running Quick Task...", 1)
 end
 
-function obj:showTaskDetailWindow(subject, description)
-    webviewModule.showTaskDetailWindow(subject, description, utils, log)
+function obj:showTaskDetailWindow(subject, description, metadata)
+    webviewModule.showTaskDetailWindow(subject, description, metadata, utils, log)
     return self
 end
 
@@ -380,6 +382,51 @@ function obj:launchClaudeWithCwd(sessionId, cwd)
     end
 
     hs.alert.show("Launching Claude in " .. cwd:match("[^/]+$") .. "...", 1)
+end
+
+function obj:launchClaudeWithSession(sessionId)
+    if not sessionId or sessionId == "" then
+        hs.alert.show("No session ID", 2)
+        return
+    end
+
+    local terminalPath = discovery.discoverTerminalApp(obj.config.terminalApp)
+    if not terminalPath then
+        hs.alert.show("No terminal app found", 2)
+        return
+    end
+
+    local shell = discovery.getShell(obj.config.shell)
+    local claudePath = discovery.discoverClaudePath(obj.config.claudePath) or "claude"
+    local shellCmd = string.format("CLAUDE_CODE_TASK_LIST_ID=%s %s", sessionId, claudePath)
+
+    log("Launching Claude with session: " .. shellCmd)
+
+    -- iTerm2: use AppleScript since it doesn't support -e shell -c cmd args
+    if terminalPath:find("iTerm") then
+        local escapedCmd = shellCmd:gsub("\\", "\\\\"):gsub('"', '\\"')
+        local script = [[
+            tell application "iTerm"
+                activate
+                create window with default profile
+                tell current session of current window
+                    write text "]] .. escapedCmd .. [["
+                end tell
+            end tell
+        ]]
+        hs.osascript.applescript(script)
+    else
+        local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
+            if exitCode ~= 0 then
+                log("Terminal launch error: " .. (stderr or "unknown"))
+            end
+        end, {
+            "-e", shell, "-c", shellCmd
+        })
+        task:start()
+    end
+
+    hs.alert.show("Launching Claude with session...", 1)
 end
 
 function obj:start()
