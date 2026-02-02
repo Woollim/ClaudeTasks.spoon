@@ -9,11 +9,14 @@ Hammerspoon Spoon for viewing Claude Code tasks in a floating window.
 ## Features
 
 - Floating task viewer with WebView UI
+- **Vim-like keyboard navigation** (j/k to move, Space to view, Enter to launch)
+- **Task search/filtering** with real-time results
 - Auto-refresh on file changes via pathwatcher
 - Session selector with datalist autocomplete
 - Quick TaskUpdate via dialog (⌘E)
 - Launch Claude session in terminal (▶ button)
-- Task status summary hotkey
+- Task detail view with metadata display
+- Keyboard shortcuts help popup (?)
 
 ## Installation
 
@@ -44,6 +47,20 @@ spoon.ClaudeTasks:start()
 |--------|--------|
 | `opt+.` | Toggle task viewer |
 | `cmd+alt+T` | Show task status summary |
+
+### In-App Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Navigate tasks (vim-like) |
+| `Space` | View task detail |
+| `Enter` | Launch Claude session |
+| `/` | Search mode |
+| `=` | Session input mode |
+| `Escape` | Return to navigation |
+| `?` | Show shortcuts help |
+| `⌘E` | Quick Task dialog |
+| `⌘Enter` | Create task |
 
 ### Custom Configuration
 
@@ -81,6 +98,9 @@ spoon.ClaudeTasks:start()
 - `obj:createTask(subject)` - Create a new task via Claude CLI
 - `obj:quickTaskUpdate(prompt)` - Run quick TaskUpdate via haiku model
 - `obj:launchClaudeWithTaskList()` - Launch Claude in terminal with current session
+- `obj:launchClaudeWithCwd(sessionId, cwd)` - Launch Claude with specific working directory
+- `obj:launchClaudeWithSession(sessionId)` - Launch Claude with session env var
+- `obj:showTaskDetailWindow(subject, description, metadata)` - Show task detail popup
 - `obj:status()` - Get current status info
 - `obj:configure(options)` - Update configuration
 - `obj:bindHotkeys(mapping)` - Bind hotkeys

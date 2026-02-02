@@ -62,6 +62,17 @@ end
 
 WebView communicates with Lua via `hs.webview.usercontent`. JavaScript calls `webkit.messageHandlers.taskBridge.postMessage()` which triggers the `userContentController` callback in Lua.
 
+### Mode System (html.lua)
+
+UI has two input modes managed by `currentMode` variable:
+- `'session'` - Session ID input (default)
+- `'search'` - Task filtering
+
+Key functions:
+- `setMode(mode)` - Switch mode, release task focus, focus input field
+- `releaseToNavigation()` - Blur input, clear task focus for j/k navigation
+- `toggleMode()` - Toggle between modes (for button click)
+
 ### Task File Structure
 
 Tasks are stored in `~/.claude/tasks/{sessionId}/*.json`. Each session directory contains individual task JSON files.
@@ -106,7 +117,13 @@ SpoonInstall compatible via `docs.json` metadata file.
 See README.md for complete API documentation. Key methods:
 - `obj:start()`, `obj:stop()`, `obj:show()`, `obj:hide()`, `obj:toggle()`
 - `obj:refresh()`, `obj:setTaskListId()`, `obj:createTask()`, `obj:quickTaskUpdate()`
-- `obj:launchClaudeWithTaskList()`, `obj:configure()`, `obj:checkForUpdates()`, `obj:status()`, `obj:bindHotkeys()`
+- `obj:launchClaudeWithTaskList()`, `obj:launchClaudeWithCwd()`, `obj:launchClaudeWithSession()`
+- `obj:configure()`, `obj:checkForUpdates()`, `obj:status()`, `obj:bindHotkeys()`
+
+### Launch Methods
+
+- `launchClaudeWithCwd(sessionId, cwd)` - Launch with `-r` flag and cd to working directory
+- `launchClaudeWithSession(sessionId)` - Launch with `CLAUDE_CODE_TASK_LIST_ID` env var only (for tasks without cwd)
 
 ## Quick Task Implementation
 
