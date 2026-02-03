@@ -8,74 +8,101 @@ local cwdCache = {}
 
 -- Encode a path back to Claude's format for verification
 -- /Users/choi/.claude → -Users-choi--claude
+-- Claude encodes: / → -, . → - (but /. → --)
 local function encodePath(path)
-    return path:gsub("/%.", "--"):gsub("/", "-")
+    -- First handle /. → -- (dot directories after slash)
+    local encoded = path:gsub("/%.", "--")
+    -- Then handle remaining / → -
+    encoded = encoded:gsub("/", "-")
+    -- Finally handle remaining . → - (dots in filenames like ClaudeTasks.spoon)
+    encoded = encoded:gsub("%.", "-")
+    return encoded
 end
 
 -- Decode CWD path from encoded directory name
--- Claude encodes paths: / → -, /. → --
--- Problem: hyphens in dir names (e.g. aqueduct-deploy) are ambiguous.
+-- Claude encodes paths: / → -, . → -, /. → --
+-- Problem: hyphens in dir names (e.g. aqueduct-deploy) and dots (e.g. ClaudeTasks.spoon) are ambiguous.
 -- Solution: walk the filesystem and verify by re-encoding.
 function M.decodeCwdPath(encodedDir)
-    local parts = {}
-    -- Split on '-' but first handle '--' (encoded /.)
+    -- First handle '--' (encoded /.) by replacing with placeholder
     local encoded = encodedDir:gsub("%-%-", "\001")
+
     -- Remove leading '-' (represents root /)
+    local startsWithDot = false
     if encoded:sub(1,1) == "-" then
         encoded = encoded:sub(2)
     elseif encoded:sub(1,1) == "\001" then
-        -- leading -- means /.
         encoded = encoded:sub(2)
-        parts[1] = "."
+        startsWithDot = true
     end
+
+    -- Split by '\001' to get segments separated by /. (dot directories)
     local segments = {}
     for seg in encoded:gmatch("[^\001]+") do
         table.insert(segments, seg)
     end
-    -- For each '--' separated segment, resolve dash ambiguity via filesystem
-    local function resolveSegment(basePath, segment)
+
+    -- For a single segment, resolve it by trying all interpretations of '-'
+    -- Each '-' could be: '/' (path separator), '.' (dot in name), or '-' (literal hyphen)
+    local function resolveSegment(basePath, segment, prefixWithDot)
         local tokens = {}
         for t in segment:gmatch("[^%-]+") do
             table.insert(tokens, t)
         end
         if #tokens == 0 then return basePath end
-        -- Try all combinations, verify each candidate exists
-        local function tryResolve(idx, currentPath)
+
+        -- Recursive function: try building path from tokens[idx] onwards
+        -- accumulated = current directory name being built
+        local function tryBuild(idx, currentPath, accumulated)
             if idx > #tokens then
-                -- All tokens processed, verify final path exists
-                if hs.fs.attributes(currentPath, "mode") == "directory" then
-                    return currentPath
+                -- All tokens consumed, check if accumulated forms a valid dir
+                local finalPath = currentPath .. "/" .. accumulated
+                if hs.fs.attributes(finalPath, "mode") == "directory" then
+                    return finalPath
                 end
                 return nil
             end
-            local accumulated = tokens[idx]
-            for j = idx, #tokens do
-                if j > idx then
-                    accumulated = accumulated .. "-" .. tokens[j]
-                end
-                local candidate = currentPath .. "/" .. accumulated
-                -- Always verify directory exists before proceeding
-                if hs.fs.attributes(candidate, "mode") == "directory" then
-                    if j == #tokens then
-                        -- Last token combo, already verified
-                        return candidate
-                    end
-                    local result = tryResolve(j + 1, candidate)
+
+            local token = tokens[idx]
+
+            -- Option 1: '-' was '/' - accumulated is complete dir name, token starts new dir
+            if accumulated ~= "" then
+                local dirPath = currentPath .. "/" .. accumulated
+                if hs.fs.attributes(dirPath, "mode") == "directory" then
+                    local result = tryBuild(idx + 1, dirPath, token)
                     if result then return result end
                 end
             end
-            -- All combinations failed
+
+            -- Option 2: '-' was '.' - join with dot
+            if accumulated ~= "" then
+                local result = tryBuild(idx + 1, currentPath, accumulated .. "." .. token)
+                if result then return result end
+            end
+
+            -- Option 3: '-' was literal '-' - join with hyphen
+            if accumulated ~= "" then
+                local result = tryBuild(idx + 1, currentPath, accumulated .. "-" .. token)
+                if result then return result end
+            end
+
+            -- First token case
+            if accumulated == "" then
+                local prefix = prefixWithDot and "." or ""
+                return tryBuild(idx + 1, currentPath, prefix .. token)
+            end
+
             return nil
         end
-        return tryResolve(1, basePath)
+
+        return tryBuild(1, basePath, "")
     end
+
     local result = ""
     for i, seg in ipairs(segments) do
-        local actualSeg = seg
-        if i > 1 or (parts[1] == ".") then
-            actualSeg = "." .. seg
-        end
-        result = resolveSegment(result, actualSeg)
+        local prefixWithDot = (i > 1) or startsWithDot
+        result = resolveSegment(result, seg, prefixWithDot)
+        if not result then return nil end
     end
     return result
 end
