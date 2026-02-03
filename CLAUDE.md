@@ -79,13 +79,21 @@ Tasks are stored in `~/.claude/tasks/{sessionId}/*.json`. Each session directory
 
 ### CWD Path Encoding
 
-Claude Code encodes working directory paths in session IDs where `/` → `-` and `/.` → `--`. The `tasks.decodeCwdPath()` function resolves ambiguity (e.g., `team-attention` directory name vs `/team/attention` path) by walking the filesystem to find valid paths. This is critical for the "Launch Claude" feature.
+Claude Code encodes working directory paths in session IDs:
+- `/` → `-` (path separator)
+- `.` → `-` (dot in filenames, e.g., `ClaudeTasks.spoon` → `ClaudeTasks-spoon`)
+- `/.` → `--` (dot directories, e.g., `/.claude` → `--claude`)
+
+The `tasks.decodeCwdPath()` function resolves ambiguity by backtracking through all interpretations of `-` (as `/`, `.`, or literal `-`) and validating against the filesystem. This is critical for the "Launch Claude" feature.
 
 ## Development Commands
 
-No build/test/lint commands. This is a pure Lua Spoon.
+**Unit tests**: Run with pure Lua (no Hammerspoon required):
+```bash
+lua tests/test_tasks.lua
+```
 
-**Testing**: Reload in Hammerspoon console with:
+**Integration testing**: Reload in Hammerspoon console:
 ```lua
 hs.loadSpoon("ClaudeTasks")
 spoon.ClaudeTasks:start()
