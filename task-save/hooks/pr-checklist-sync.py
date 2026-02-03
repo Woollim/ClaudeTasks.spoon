@@ -12,6 +12,11 @@ import subprocess
 import sys
 
 
+def log(msg: str) -> None:
+    """Log to stderr with hook prefix."""
+    print(f"[pr-checklist-sync] {msg}", file=sys.stderr)
+
+
 def get_pr_body(pr_url: str) -> str | None:
     """Fetch PR body using gh CLI."""
     try:
@@ -23,8 +28,11 @@ def get_pr_body(pr_url: str) -> str | None:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
+        log(f"gh pr view failed (exit {result.returncode}): {result.stderr.strip() or 'no error message'}")
+    except subprocess.TimeoutExpired:
+        log(f"gh pr view timed out after 10s for {pr_url}")
+    except FileNotFoundError:
+        log("gh CLI not found. Install with: brew install gh")
     return None
 
 
@@ -36,10 +44,16 @@ def has_unchecked_items(body: str) -> bool:
 def main():
     try:
         hook_input = json.load(sys.stdin)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        log(f"Failed to parse hook input: {e}")
         return
 
-    command = hook_input.get("tool_input", {}).get("command", "")
+    tool_input = hook_input.get("tool_input")
+    if not isinstance(tool_input, dict):
+        log(f"Unexpected tool_input type: {type(tool_input).__name__}")
+        return
+
+    command = tool_input.get("command", "")
     if "gh pr create" not in command:
         return
 
@@ -49,6 +63,8 @@ def main():
     # Extract PR URL from stdout (gh pr create outputs the URL)
     pr_url_match = re.search(r"https://github\.com/[^\s]+/pull/\d+", stdout)
     if not pr_url_match:
+        if stdout.strip():
+            log(f"Could not extract PR URL from stdout: {stdout[:200]}")
         return
 
     pr_url = pr_url_match.group(0)
