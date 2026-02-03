@@ -5,6 +5,5 @@
   "author": {
     "name": "Jongwon Choi",
     "url": "https://github.com/jongwony"
-  },
-  "hooks": "../hooks/hooks.json"
+  }
 }
