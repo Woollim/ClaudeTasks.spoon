@@ -125,13 +125,27 @@ SpoonInstall compatible via `docs.json` metadata file.
 See README.md for complete API documentation. Key methods:
 - `obj:start()`, `obj:stop()`, `obj:show()`, `obj:hide()`, `obj:toggle()`
 - `obj:refresh()`, `obj:setTaskListId()`, `obj:createTask()`, `obj:quickTaskUpdate()`
-- `obj:launchClaudeWithTaskList()`, `obj:launchClaudeWithCwd()`, `obj:launchClaudeWithSession()`
+- `obj:launchClaudeWithTaskList()`, `obj:launchClaudeWithCwd()`, `obj:launchClaudeWithSession()`, `obj:launchClaudeHandoff()`
 - `obj:configure()`, `obj:checkForUpdates()`, `obj:status()`, `obj:bindHotkeys()`
 
 ### Launch Methods
 
-- `launchClaudeWithCwd(sessionId, cwd)` - Launch with `-r` flag and cd to working directory
+- `launchClaudeWithCwd(sessionId, cwd)` - Resume session (`-r` flag) and cd to working directory
 - `launchClaudeWithSession(sessionId)` - Launch with `CLAUDE_CODE_TASK_LIST_ID` env var only (for tasks without cwd)
+- `launchClaudeHandoff(sessionId, targetCwd)` - Cross-project handoff: same task list, new conversation, different cwd (no `-r` flag)
+
+### Cross-Project Handoff
+
+Tasks with `metadata.handoff = true` and `metadata.target_cwd` are rendered with a distinct purple launch button (⤴). Created via `/task-save --cwd <path>`.
+
+Key difference from resume: handoff shares the task list (`CLAUDE_CODE_TASK_LIST_ID`) but starts a fresh conversation without `-r`. Uses `export CLAUDE_CODE_TASK_LIST_ID=... && claude` (not inline `VAR=val cmd`) to ensure env var propagation.
+
+Handoff metadata schema:
+```json
+{"source": "task-save", "handoff": true, "target_cwd": "/abs/path", "source_cwd": "/abs/current"}
+```
+
+UI helpers in `html.lua`: `generateLaunchBtn(task, utils)` and `generateCwdDisplay(task, utils)` handle both regular and handoff task rendering.
 
 ## Quick Task Implementation
 
