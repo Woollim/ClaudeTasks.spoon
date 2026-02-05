@@ -106,6 +106,8 @@ local function actionHandler(action, params)
         obj:launchClaudeWithSession(params.sessionId)
     elseif action == "showQuickUpdateDialog" then
         obj:showQuickTaskDialog()
+    elseif action == "launchClaudeHandoff" then
+        obj:launchClaudeHandoff(params.sessionId, params.cwd)
     elseif action == "showTaskDetail" then
         obj:showTaskDetailWindow(params.subject, params.description, params.metadata)
     end
@@ -427,6 +429,54 @@ function obj:launchClaudeWithSession(sessionId)
     end
 
     hs.alert.show("Launching Claude with session...", 1)
+end
+
+function obj:launchClaudeHandoff(sessionId, targetCwd)
+    if not targetCwd or targetCwd == "" then
+        hs.alert.show("No target directory", 2)
+        return
+    end
+    if not sessionId or sessionId == "" then
+        hs.alert.show("No session ID", 2)
+        return
+    end
+
+    local terminalPath = discovery.discoverTerminalApp(obj.config.terminalApp)
+    if not terminalPath then
+        hs.alert.show("No terminal app found", 2)
+        return
+    end
+
+    local shell = discovery.getShell(obj.config.shell)
+    local claudePath = discovery.discoverClaudePath(obj.config.claudePath) or "claude"
+    local shellCmd = string.format("cd '%s' && export CLAUDE_CODE_TASK_LIST_ID=%s && %s", targetCwd, sessionId, claudePath)
+
+    log("Launching Claude handoff: " .. shellCmd)
+
+    if terminalPath:find("iTerm") then
+        local escapedCmd = shellCmd:gsub("\\", "\\\\"):gsub('"', '\\"')
+        local script = [[
+            tell application "iTerm"
+                activate
+                create window with default profile
+                tell current session of current window
+                    write text "]] .. escapedCmd .. [["
+                end tell
+            end tell
+        ]]
+        hs.osascript.applescript(script)
+    else
+        local task = hs.task.new(terminalPath, function(exitCode, stdout, stderr)
+            if exitCode ~= 0 then
+                log("Terminal launch error: " .. (stderr or "unknown"))
+            end
+        end, {
+            "-e", shell, "-c", shellCmd
+        })
+        task:start()
+    end
+
+    hs.alert.show("Handoff to " .. targetCwd:match("[^/]+$") .. "...", 1)
 end
 
 function obj:start()
