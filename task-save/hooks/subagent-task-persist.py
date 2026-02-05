@@ -19,8 +19,8 @@ def log(msg: str) -> None:
 def main():
     try:
         hook_input = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        log(f"Failed to parse hook input: {e}")
+    except (ValueError, OSError) as e:
+        log(f"Failed to read hook input: {type(e).__name__}: {e}")
         return
 
     agent_type = hook_input.get("agent_type", "unknown")
@@ -41,4 +41,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        log(f"Unexpected error: {type(e).__name__}: {e}")
+        sys.exit(1)
