@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "^(?!Bash$|Explore$)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/subagent-task-persist.py"
+          }
+        ]
+      }
     ]
   }
 }
