@@ -51,6 +51,30 @@ function M.generateMetadataBadges(metadata, utils)
     return badges
 end
 
+-- Generate launch button for a task (handles handoff metadata)
+function M.generateLaunchBtn(task, utils)
+    if task.metadata and task.metadata.handoff and task.metadata.target_cwd then
+        local cwd = task.metadata.target_cwd
+        return '<button class="task-launch-btn task-handoff-btn" onclick="launchClaudeHandoff(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(cwd) .. '\')" title="Handoff to ' .. utils.escapeHtml(cwd) .. '">⤴</button>'
+    elseif task._cwd then
+        return '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>'
+    else
+        return '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
+    end
+end
+
+-- Generate cwd display for a task (handles handoff target_cwd)
+function M.generateCwdDisplay(task, utils)
+    local cwd = task._cwd
+    local isHandoff = task.metadata and task.metadata.handoff and task.metadata.target_cwd
+    if isHandoff then
+        cwd = task.metadata.target_cwd
+    end
+    if not cwd then return '' end
+    local prefix = isHandoff and '<span style="color:#8b5cf6">&#x2934; </span>' or ''
+    return '<div class="cwd-path" title="' .. utils.escapeHtml(cwd) .. '">' .. prefix .. utils.escapeHtml(cwd) .. '</div>'
+end
+
 -- Generate full HTML for task viewer
 function M.generateHTML(tasks, sessions, currentSessionValue, utils)
     local pendingTasks = {}
@@ -383,6 +407,13 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         .task-launch-btn:hover {
             background: #16a34a;
         }
+        .task-handoff-btn {
+            background: #8b5cf6;
+            font-size: 14px;
+        }
+        .task-handoff-btn:hover {
+            background: #7c3aed;
+        }
         /* Search/Session toggle */
         .input-row {
             display: flex;
@@ -656,6 +687,14 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             });
         }
 
+        function launchClaudeHandoff(sessionId, cwd) {
+            window.webkit.messageHandlers.taskBridge.postMessage({
+                action: 'launchClaudeHandoff',
+                sessionId: sessionId,
+                cwd: cwd
+            });
+        }
+
         function showTaskDetail(subject, description, metadata) {
             window.webkit.messageHandlers.taskBridge.postMessage({
                 action: 'showTaskDetail',
@@ -916,7 +955,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
+            local launchBtn = M.generateLaunchBtn(task, utils)
             local descriptionHtml = ''
             local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
@@ -936,7 +975,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                     #]] .. utils.escapeHtml(tostring(task.id)) .. [[ <span class="session-badge" title="]] .. utils.escapeHtml(task._sessionId) .. [[">]] .. utils.escapeHtml(task._sessionId) .. [[</span>]] .. ownerHtml .. [[
                 </div>
                 ]] .. (metadataHtml ~= '' and '<div class="task-meta">' .. metadataHtml .. '</div>' or '') .. [[
-                ]] .. (task._cwd and '<div class="cwd-path" title="' .. utils.escapeHtml(task._cwd) .. '">' .. utils.escapeHtml(task._cwd) .. '</div>' or '') .. [[
+                ]] .. M.generateCwdDisplay(task, utils) .. [[
                 ]] .. blocked .. launchBtn .. [[
             </div>
         </div>
@@ -956,7 +995,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             if task.blockedBy and #task.blockedBy > 0 then
                 blocked = '<div class="task-blocked">Blocked by: ' .. table.concat(task.blockedBy, ", ") .. '</div>'
             end
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
+            local launchBtn = M.generateLaunchBtn(task, utils)
             local descriptionHtml = ''
             local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
@@ -976,7 +1015,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                     #]] .. utils.escapeHtml(tostring(task.id)) .. [[ <span class="session-badge" title="]] .. utils.escapeHtml(task._sessionId) .. [[">]] .. utils.escapeHtml(task._sessionId) .. [[</span>]] .. ownerHtml .. [[
                 </div>
                 ]] .. (metadataHtml ~= '' and '<div class="task-meta">' .. metadataHtml .. '</div>' or '') .. [[
-                ]] .. (task._cwd and '<div class="cwd-path" title="' .. utils.escapeHtml(task._cwd) .. '">' .. utils.escapeHtml(task._cwd) .. '</div>' or '') .. [[
+                ]] .. M.generateCwdDisplay(task, utils) .. [[
                 ]] .. blocked .. launchBtn .. [[
             </div>
         </div>
@@ -994,7 +1033,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
 ]]
         for i = 1, displayCount do
             local task = completedTasks[i]
-            local launchBtn = task._cwd and '<button class="task-launch-btn" onclick="launchClaudeWithCwd(\'' .. utils.escapeHtml(task._sessionId) .. '\', \'' .. utils.escapeHtml(task._cwd) .. '\')" title="Launch in ' .. utils.escapeHtml(task._cwd) .. '">▶</button>' or '<button class="task-launch-btn" onclick="launchClaudeWithSession(\'' .. utils.escapeHtml(task._sessionId) .. '\')" title="Launch with session">▶</button>'
+            local launchBtn = M.generateLaunchBtn(task, utils)
             local descriptionHtml = ''
             local jsonMeta = task.metadata and hs.json.encode(task.metadata) or '{}'
             if task.description then
@@ -1014,7 +1053,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
                     #]] .. utils.escapeHtml(tostring(task.id)) .. [[ <span class="session-badge" title="]] .. utils.escapeHtml(task._sessionId) .. [[">]] .. utils.escapeHtml(task._sessionId) .. [[</span>]] .. ownerHtml .. [[
                 </div>
                 ]] .. (metadataHtml ~= '' and '<div class="task-meta">' .. metadataHtml .. '</div>' or '') .. [[
-                ]] .. (task._cwd and '<div class="cwd-path" title="' .. utils.escapeHtml(task._cwd) .. '">' .. utils.escapeHtml(task._cwd) .. '</div>' or '') .. launchBtn .. [[
+                ]] .. M.generateCwdDisplay(task, utils) .. launchBtn .. [[
             </div>
         </div>
 ]]
