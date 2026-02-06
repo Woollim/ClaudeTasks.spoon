@@ -789,6 +789,34 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
             }
         }
 
+        function deleteFocusedTask() {
+            const tasks = getVisibleTasks();
+            if (focusedIndex < 0 || focusedIndex >= tasks.length) {
+                console.warn('deleteFocusedTask: No task focused');
+                return;
+            }
+
+            const task = tasks[focusedIndex];
+            const taskId = task.dataset.taskId;
+            const sessionId = task.dataset.sessionId;
+
+            if (!taskId || !sessionId) {
+                console.warn('deleteFocusedTask: Missing task-id or session-id');
+                return;
+            }
+
+            const subjectEl = task.querySelector('.task-subject');
+            const title = subjectEl ? subjectEl.textContent.trim() : 'this task';
+
+            if (confirm('Delete "' + title + '"?\n\nThis cannot be undone.')) {
+                window.webkit.messageHandlers.taskBridge.postMessage({
+                    action: 'deleteTask',
+                    taskId: taskId,
+                    sessionId: sessionId
+                });
+            }
+        }
+
         // Toggle between modes (for button click)
         function toggleMode() {
             setMode(currentMode === 'search' ? 'session' : 'search');
@@ -945,6 +973,11 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
                     launchFocusedTask();
                     return;
                 }
+                if (matchesBinding(e, 'deleteTask')) {
+                    e.preventDefault();
+                    deleteFocusedTask();
+                    return;
+                }
             }
         });
     </script>
@@ -1004,7 +1037,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
             html = html .. [[
-        <div class="task">
+        <div class="task" data-task-id="]] .. utils.escapeHtml(tostring(task.id)) .. [[" data-session-id="]] .. utils.escapeHtml(task._sessionId) .. [[">
             <span class="task-icon status-in_progress">]] .. M.getStatusIcon("in_progress") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. utils.escapeHtml(task.subject) .. [[</div>
@@ -1044,7 +1077,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
             html = html .. [[
-        <div class="task">
+        <div class="task" data-task-id="]] .. utils.escapeHtml(tostring(task.id)) .. [[" data-session-id="]] .. utils.escapeHtml(task._sessionId) .. [[">
             <span class="task-icon status-pending">]] .. M.getStatusIcon("pending") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. utils.escapeHtml(task.subject) .. [[</div>
@@ -1082,7 +1115,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
             local ownerHtml = task.owner and ' <span class="owner-badge">' .. utils.escapeHtml(task.owner) .. '</span>' or ''
             local metadataHtml = M.generateMetadataBadges(task.metadata, utils)
             html = html .. [[
-        <div class="task" style="opacity: 0.6;">
+        <div class="task" data-task-id="]] .. utils.escapeHtml(tostring(task.id)) .. [[" data-session-id="]] .. utils.escapeHtml(task._sessionId) .. [[" style="opacity: 0.6;">
             <span class="task-icon status-completed">]] .. M.getStatusIcon("completed") .. [[</span>
             <div class="task-content">
                 <div class="task-subject">]] .. utils.escapeHtml(task.subject) .. [[</div>
@@ -1126,6 +1159,7 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
             <div class="help-row"><span class="help-key">k / ㅏ</span><span class="help-desc">Previous task</span></div>
             <div class="help-row"><span class="help-key">Space</span><span class="help-desc">View detail</span></div>
             <div class="help-row"><span class="help-key">Enter</span><span class="help-desc">Launch Claude</span></div>
+            <div class="help-row"><span class="help-key">⌘⌫</span><span class="help-desc">Delete task</span></div>
         </div>
         <div class="help-section">
             <div class="help-section-title">Mode</div>

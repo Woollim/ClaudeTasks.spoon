@@ -113,6 +113,8 @@ local function actionHandler(action, params)
         obj:launchClaudeHandoff(params.sessionId, params.cwd)
     elseif action == "showTaskDetail" then
         obj:showTaskDetailWindow(params.subject, params.description, params.metadata)
+    elseif action == "deleteTask" then
+        obj:deleteTask(params.taskId, params.sessionId)
     end
 end
 
@@ -306,6 +308,45 @@ end
 function obj:showTaskDetailWindow(subject, description, metadata)
     webviewModule.showTaskDetailWindow(subject, description, metadata, utils, log)
     return self
+end
+
+function obj:deleteTask(taskId, sessionId)
+    -- Input validation
+    if not taskId or not sessionId then
+        log("deleteTask: taskId or sessionId is nil")
+        hs.alert.show("Failed to delete task", 2)
+        return false
+    end
+
+    -- Path traversal prevention: block ../ and path separators
+    if taskId:match("%.%.") or sessionId:match("%.%.") or
+       taskId:match("[/\\]") or sessionId:match("[/\\]") then
+        log("deleteTask: Invalid characters in taskId or sessionId")
+        hs.alert.show("Failed to delete task", 2)
+        return false
+    end
+
+    local filepath = utils.getTasksDir() .. "/" .. sessionId .. "/" .. taskId .. ".json"
+
+    -- Check file exists
+    if not utils.fileExists(filepath) then
+        log("deleteTask: File not found: " .. filepath)
+        hs.alert.show("Failed to delete task", 2)
+        return false
+    end
+
+    -- Execute deletion with error handling
+    local success, err = os.remove(filepath)
+    if not success then
+        log("deleteTask: Failed to delete: " .. filepath .. " - " .. (err or "unknown error"))
+        hs.alert.show("Failed to delete task", 2)
+        return false
+    end
+
+    log("deleteTask: Deleted " .. filepath)
+    hs.alert.show("Task deleted", 1)
+    obj:refresh()
+    return true
 end
 
 function obj:showQuickTaskDialog()
@@ -620,6 +661,7 @@ end
 obj.defaultShortcuts = {
     navigateDown = {modifiers = {}, keys = {'j', 'ㅓ', 'ArrowDown'}},
     navigateUp = {modifiers = {}, keys = {'k', 'ㅏ', 'ArrowUp'}},
+    deleteTask = {modifiers = {'cmd'}, keys = {'Backspace'}},
     openTask = {modifiers = {}, keys = {' '}},
     launchTask = {modifiers = {}, keys = {'Enter'}},
 }
