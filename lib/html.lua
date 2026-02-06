@@ -76,7 +76,7 @@ function M.generateCwdDisplay(task, utils)
 end
 
 -- Generate full HTML for task viewer
-function M.generateHTML(tasks, sessions, currentSessionValue, utils)
+function M.generateHTML(tasks, sessions, currentSessionValue, utils, config)
     local pendingTasks = {}
     local inProgressTasks = {}
     local completedTasks = {}
@@ -99,6 +99,12 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             utils.escapeHtml(sessionId)
         )
     end
+
+    -- Generate keyBindings JavaScript (no fallback - config.keyBindings must be set)
+    if not config or not config.keyBindings then
+        error("html.generateHTML: config.keyBindings is required")
+    end
+    local keyBindingsJson = hs.json.encode(config.keyBindings)
 
     local html = [[
 <!DOCTYPE html>
@@ -567,12 +573,45 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
         }
     </style>
     <script>
+        const keyBindings = ]] .. keyBindingsJson .. [[;
+
         let isCreating = false;
         let formCollapsed = true;
         let focusedIndex = -1;
         let currentMode = 'session'; // 'session' | 'search'
         let searchDebounceTimer = null;
         let helpVisible = false;
+
+        // Check if a key matches a binding
+        // Format: {modifiers: ['cmd'], keys: ['Backspace']}
+        function matchesBinding(e, bindingName) {
+            const binding = keyBindings[bindingName];
+            if (!binding) {
+                console.warn('matchesBinding: Unknown binding "' + bindingName + '"');
+                return false;
+            }
+            if (!binding.keys) return false;
+
+            const modifiers = binding.modifiers || [];
+            const keys = binding.keys;
+
+            // Check if key matches any of the keys
+            const keyMatches = keys.includes(e.key);
+            if (!keyMatches) return false;
+
+            // Check modifiers
+            const cmdRequired = modifiers.includes('cmd');
+            const altRequired = modifiers.includes('alt');
+            const ctrlRequired = modifiers.includes('ctrl');
+            const shiftRequired = modifiers.includes('shift');
+
+            const cmdMatches = cmdRequired ? e.metaKey : !e.metaKey;
+            const altMatches = altRequired ? e.altKey : !e.altKey;
+            const ctrlMatches = ctrlRequired ? e.ctrlKey : !e.ctrlKey;
+            const shiftMatches = shiftRequired ? e.shiftKey : !e.shiftKey;
+
+            return cmdMatches && altMatches && ctrlMatches && shiftMatches;
+        }
 
         // Release focus to navigation mode
         function releaseToNavigation() {
@@ -885,24 +924,23 @@ function M.generateHTML(tasks, sessions, currentSessionValue, utils)
             }
 
             // vim-like navigation (only when not in input)
-            // Korean mappings: j→ㅓ, k→ㅏ
             if (!isInputFocused) {
-                if (e.key === 'j' || e.key === 'ㅓ') {
+                if (matchesBinding(e, 'navigateDown')) {
                     e.preventDefault();
                     updateFocus(focusedIndex + 1);
                     return;
                 }
-                if (e.key === 'k' || e.key === 'ㅏ') {
+                if (matchesBinding(e, 'navigateUp')) {
                     e.preventDefault();
                     updateFocus(focusedIndex - 1);
                     return;
                 }
-                if (e.key === ' ') {
+                if (matchesBinding(e, 'openTask')) {
                     e.preventDefault();
                     openFocusedTask();
                     return;
                 }
-                if (e.key === 'Enter') {
+                if (matchesBinding(e, 'launchTask')) {
                     e.preventDefault();
                     launchFocusedTask();
                     return;

@@ -56,6 +56,9 @@ obj.config = {
     -- Update Checker
     checkForUpdates = true,
     updateCheckInterval = 86400,
+
+    -- WebView Key Bindings (initialized in init() from defaultShortcuts)
+    keyBindings = nil,
 }
 
 -- ============================================================================
@@ -84,7 +87,7 @@ local function refreshWebView()
     local allTasks = tasks.loadAllTasks(obj.config, utils, log)
     local sessions = stateModule.listSessionDirs(utils.getTasksDir(), utils)
     local currentSessionValue = obj.state.currentTaskListId or ''
-    local htmlContent = html.generateHTML(allTasks, sessions, currentSessionValue, utils)
+    local htmlContent = html.generateHTML(allTasks, sessions, currentSessionValue, utils, obj.config)
     webviewModule.refreshWebView(htmlContent, log)
     log("WebView refreshed with " .. #allTasks .. " tasks")
 end
@@ -130,6 +133,10 @@ end
 
 function obj:init()
     obj.state.configPath = obj.spoonPath .. "/state.json"
+    -- Initialize keyBindings from defaultShortcuts (single source of truth)
+    if not obj.config.keyBindings then
+        obj.config.keyBindings = obj.defaultShortcuts
+    end
     log("ClaudeTasks Spoon initialized")
     return self
 end
@@ -584,7 +591,7 @@ function obj:status()
 end
 
 -- ============================================================================
--- Hotkey Binding
+-- Hotkey, Shortcuts Binding
 -- ============================================================================
 
 obj.defaultHotkeys = {
@@ -607,6 +614,40 @@ function obj:bindHotkeys(mapping)
         overlay = function() obj:toggleOverlay() end
     }
     hs.spoons.bindHotkeysToSpec(def, mapping)
+    return self
+end
+
+obj.defaultShortcuts = {
+    navigateDown = {modifiers = {}, keys = {'j', 'ㅓ', 'ArrowDown'}},
+    navigateUp = {modifiers = {}, keys = {'k', 'ㅏ', 'ArrowUp'}},
+    openTask = {modifiers = {}, keys = {' '}},
+    launchTask = {modifiers = {}, keys = {'Enter'}},
+}
+
+function obj:bindShortcuts(mapping)
+    -- Input validation
+    if mapping ~= nil and type(mapping) ~= "table" then
+        log("bindShortcuts: mapping must be a table, got " .. type(mapping))
+        return self
+    end
+
+    local shortcuts = {}
+    for k, v in pairs(obj.defaultShortcuts) do
+        shortcuts[k] = v
+    end
+    if mapping then
+        for name, binding in pairs(mapping) do
+            if type(binding) ~= "table" then
+                log("bindShortcuts: Invalid binding for '" .. tostring(name) .. "' (not a table)")
+            elseif not binding.keys then
+                log("bindShortcuts: Invalid binding for '" .. tostring(name) .. "' (missing 'keys')")
+            else
+                shortcuts[name] = binding
+            end
+        end
+    end
+    obj.config.keyBindings = shortcuts
+    log("Shortcuts bound: " .. hs.json.encode(shortcuts))
     return self
 end
 
